@@ -30,7 +30,7 @@
           "id": "tag:example.com,2026:list:two",
           "name": "List Two",
           "uris": ["https://two.example.com/service-list.xml"],
-          "delivery": ["dash", "dvb-t"],
+          "delivery": ["dash", "dvb-t", "rtsp"],
           "languages": ["it"],
           "genres": [],
           "countries": ["ITA"],

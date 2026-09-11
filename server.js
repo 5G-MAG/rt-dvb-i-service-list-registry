@@ -35,9 +35,10 @@ const NS_TVA = 'urn:tva:metadata:2024';
 const PARAMETERS = ['TargetCountry', 'regulatorListFlag', 'Delivery', 'Language', 'Genre',
                     'ProviderName', 'inlineImages'];
 
-// Delivery values map to the children of DeliveryType (dvbi_types_v1.0.xsd). A value outside this
-// set is "an invalid value ... for a query parameter", so also a 400.
-const DELIVERY = {
+// What an offering in registry.json may declare: the children of DeliveryType
+// (dvbi_types_v1.0.xsd), in schema order, keyed by the short name the file uses. These are
+// emission keys and are NOT the values a query carries; see DELIVERY_QUERY below.
+const DELIVERY_ELEMENTS = {
   'dash': 'DASHDelivery',
   'dvb-t': 'DVBTDelivery',
   'dvb-c': 'DVBCDelivery',
@@ -45,6 +46,24 @@ const DELIVERY = {
   'rtsp': 'RTSPDelivery',
   'multicast-ts': 'MulticastTSDelivery',
   'application': 'ApplicationDelivery',
+};
+
+// The Delivery values a query may carry, each mapped to the DELIVERY_ELEMENTS an offering needs
+// for the query to match it. This set is closed: anything else is "an invalid value ... for a
+// query parameter" and gets a 400.
+// ETSI TS 103 770 V1.2.1, clause 5.3.6.1, table 12b:
+// "For Service List Registry queries, the Delivery values defined in table 12b shall be used, for
+// each of the corresponding DeliveryTypes."
+// Two rows cover more than one element: dvb-dash is "DASHDelivery optionally in combination with
+// MulticastTSDelivery", so DASHDelivery is what decides the match; dvb-iptv is "MulticastTSDelivery
+// and/or RTSPDelivery", so either one matches.
+const DELIVERY_QUERY = {
+  'dvb-dash': ['dash'],
+  'dvb-t': ['dvb-t'],
+  'dvb-c': ['dvb-c'],
+  'dvb-s': ['dvb-s'],
+  'dvb-iptv': ['multicast-ts', 'rtsp'],
+  'application': ['application'],
 };
 
 // TS 103 770 clause 5.1.3.2: "The maximum length of a fully qualified web service URL including
@@ -94,8 +113,8 @@ function validate(query) {
     }
   }
   for (const d of values(query, 'Delivery')) {
-    if (!DELIVERY[d.toLowerCase()]) {
-      return { status: 400, message: `Invalid Delivery "${d}". Accepted: ${Object.keys(DELIVERY).join(', ')}.` };
+    if (!DELIVERY_QUERY[d.toLowerCase()]) {
+      return { status: 400, message: `Invalid Delivery "${d}". Accepted: ${Object.keys(DELIVERY_QUERY).join(', ')}.` };
     }
   }
   for (const name of ['regulatorListFlag', 'inlineImages']) {
@@ -114,7 +133,8 @@ function matches(offering, query) {
   if (countries.length && !countries.some(c => (offering.countries || []).includes(c))) return false;
 
   const delivery = values(query, 'Delivery').map(s => s.toLowerCase());
-  if (delivery.length && !delivery.some(d => (offering.delivery || []).includes(d))) return false;
+  const declaredDelivery = (offering.delivery || []).map(s => s.toLowerCase());
+  if (delivery.length && !delivery.some(d => (DELIVERY_QUERY[d] || []).some(e => declaredDelivery.includes(e)))) return false;
 
   const languages = values(query, 'Language').map(s => s.toLowerCase());
   if (languages.length && !languages.some(l => (offering.languages || []).includes(l))) return false;
@@ -144,7 +164,7 @@ function offeringXml(o, indent) {
   // DeliveryType's children are a fixed sequence, so they are emitted in schema order rather than
   // in whatever order the registry file happens to list them.
   const declared = new Set((o.delivery || []).map(d => d.toLowerCase()));
-  const delivery = Object.entries(DELIVERY)
+  const delivery = Object.entries(DELIVERY_ELEMENTS)
     .filter(([k]) => declared.has(k))
     .map(([, el]) => `${p}    <dvbisd-t:${el}/>`)
     .join('\n');
@@ -241,7 +261,7 @@ app.get('/api/offerings', (req, res) => {
   res.json({
     registry: registry.registry,
     parameters: PARAMETERS,
-    delivery: Object.keys(DELIVERY),
+    delivery: Object.keys(DELIVERY_QUERY),
     providers: (registry.providers || []).map(p => ({
       name: p.name,
       offerings: (p.offerings || []).map(o => ({
@@ -265,4 +285,4 @@ function startServer() {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY };
+module.exports = { app, startServer, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY };

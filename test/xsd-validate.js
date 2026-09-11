@@ -64,7 +64,7 @@ console.log(`Schema: ${SCHEMA}\n`);
 check('fixture, no query parameters', buildEntryPoints(fixture, {}));
 check('fixture, TargetCountry=ITA', buildEntryPoints(fixture, { TargetCountry: 'ITA' }));
 check('fixture, regulatorListFlag=true', buildEntryPoints(fixture, { regulatorListFlag: 'true' }));
-check('fixture, Delivery[]=dash&Delivery[]=dvb-t', buildEntryPoints(fixture, { 'Delivery[]': ['dash', 'dvb-t'] }));
+check('fixture, Delivery[]=dvb-dash&Delivery[]=dvb-t', buildEntryPoints(fixture, { 'Delivery[]': ['dvb-dash', 'dvb-t'] }));
 // A query matching nothing still has to produce a valid document: ProviderOffering is minOccurs=0.
 check('fixture, no matches', buildEntryPoints(fixture, { TargetCountry: 'ZWE' }));
 // And what this registry actually serves.

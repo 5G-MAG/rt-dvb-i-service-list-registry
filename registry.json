@@ -7,7 +7,8 @@
     "implementation. Each offering is filtered against the query parameters of that same clause.",
     "",
     "delivery   which of the DeliveryType children to emit, from: dash, dvb-t, dvb-c, dvb-s, rtsp,",
-    "           multicast-ts, application. A query's Delivery parameter matches these.",
+    "           multicast-ts, application. A query carries the table 12b values instead (dvb-dash,",
+    "           dvb-t, dvb-c, dvb-s, dvb-iptv, application) and the server maps between the two.",
     "regulator  true if this list is the one published by a national regulator, matched by the",
     "           regulatorListFlag query parameter."
   ],

@@ -36,7 +36,26 @@ test('an invalid value for a parameter is refused with 400', () => {
 test('a valid query is accepted', () => {
   assert.equal(validate({}), null, 'no parameters at all is a valid query');
   assert.equal(validate({ TargetCountry: 'ITA', regulatorListFlag: 'true' }), null);
-  assert.equal(validate({ 'Delivery[]': ['dash', 'dvb-t'] }), null);
+  assert.equal(validate({ 'Delivery[]': ['dvb-dash', 'dvb-t'] }), null);
+});
+
+// The Delivery query values are not the DeliveryType element names: TS 103 770 V1.2.1 clause
+// 5.3.6.1, table 12b defines its own set, two rows of which cover more than one element. Querying
+// with an element name (dash, rtsp, multicast-ts) is an invalid value and gets a 400.
+test('Delivery queries use the table 12b values, not the DeliveryType element names', () => {
+  assert.equal(validate({ Delivery: 'dash' }).status, 400, '"dash" is an element name, not a query value');
+  assert.equal(validate({ Delivery: 'rtsp' }).status, 400);
+  assert.equal(validate({ Delivery: 'multicast-ts' }).status, 400);
+  assert.equal(validate({ Delivery: 'dvb-iptv' }), null);
+
+  // dvb-dash matches the DASHDelivery both fixture offerings declare.
+  assert.equal(count(buildEntryPoints(registry, { Delivery: 'dvb-dash' })), 2);
+  // dvb-iptv is "MulticastTSDelivery and/or RTSPDelivery", and only List Two declares RTSPDelivery.
+  const iptv = buildEntryPoints(registry, { Delivery: 'dvb-iptv' });
+  assert.equal(count(iptv), 1);
+  assert.match(iptv, /List Two/);
+  // A delivery nothing declares matches nothing.
+  assert.equal(count(buildEntryPoints(registry, { Delivery: 'dvb-s' })), 0);
 });
 
 test('repeated values arrive whether written with or without square brackets', () => {
