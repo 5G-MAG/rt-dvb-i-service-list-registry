@@ -76,6 +76,21 @@ async function run(suffix) {
       tr.appendChild(text('td', provider.name));
       tr.appendChild(text('td', (o.countries || []).join(', ') || '—'));
       tr.appendChild(text('td', (o.delivery || []).join(', ') || '—'));
+      // Extensions are listed in their own column, not merged into Delivery: what an offering gets
+      // over a local extension is not what the specification's Delivery values describe, and a
+      // reader has to be able to tell the two apart at a glance.
+      const ext = document.createElement('td');
+      if ((o.extensions || []).includes('5g-mbms')) {
+        const tag = text('span', '5G broadcast (local extension)');
+        tag.className = 'tag tag-ext';
+        tag.title = 'Also carried over 5G broadcast (MBMS). Signalled through OtherDeliveryParameters '
+                  + 'under urn:5g-mag:metadata:dvbi-5g:2026, a 5G-MAG extension that no DVB '
+                  + 'specification defines. It is not a Delivery query value.';
+        ext.appendChild(tag);
+      } else {
+        ext.textContent = '—';
+      }
+      tr.appendChild(ext);
       const urls = document.createElement('td');
       for (const u of o.uris || []) urls.appendChild(text('div', u)).className = 'url';
       tr.appendChild(urls);
@@ -85,7 +100,7 @@ async function run(suffix) {
   if (!body.children.length) {
     const tr = document.createElement('tr');
     const td = text('td', 'Nothing registered.');
-    td.colSpan = 5;
+    td.colSpan = 6;
     tr.appendChild(td);
     body.appendChild(tr);
   }

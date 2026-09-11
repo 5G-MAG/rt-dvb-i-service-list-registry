@@ -61,6 +61,9 @@
 
   .tag { display:inline-block; background:var(--brand); color:#fff; border-radius:4px;
          padding:0 .4rem; font-size:.72rem; font-weight:600; margin-left:.35rem; }
+  /* A local, non-DVB extension. Outlined rather than filled, and in a different colour from the
+     brand tag, so it never reads as part of the specified offering data. */
+  .tag-ext { background:transparent; color:#b45309; border:1px dashed #b45309; }
   .url { color:var(--muted); font-size:.82rem; font-family:ui-monospace,monospace; }
 </style>
 </head>
@@ -85,7 +88,7 @@
     <h2>What this registry offers</h2>
     <p class="hint" id="sub">Loading…</p>
     <table>
-      <thead><tr><th>Service list</th><th>Provider</th><th>Countries</th><th>Delivery</th><th>URL</th></tr></thead>
+      <thead><tr><th>Service list</th><th>Provider</th><th>Countries</th><th>Delivery</th><th>Extensions</th><th>URL</th></tr></thead>
       <tbody id="offerings"></tbody>
     </table>
   </div>
