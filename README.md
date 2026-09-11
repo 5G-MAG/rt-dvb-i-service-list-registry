@@ -18,7 +18,7 @@ or depends on somebody else's registry.
 
 ```bash
 npm install
-npm start           # http://localhost:6000/query
+npm start           # http://localhost:7000/query
 ```
 
 `PORT` changes the port, `REGISTRY_PATH` points at a different registry file, `LOG_LEVEL` is one of

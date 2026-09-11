@@ -12,7 +12,9 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 6000;
+// Not 6000: that is on the WHATWG blocked-ports list (X11), so a browser refuses to fetch from it
+// and Node's own fetch fails with "bad port". A registry nothing can reach is not a registry.
+const PORT = process.env.PORT || 7000;
 const REGISTRY_PATH = process.env.REGISTRY_PATH || path.join(__dirname, 'registry.json');
 
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
