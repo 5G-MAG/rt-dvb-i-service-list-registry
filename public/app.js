@@ -4,7 +4,8 @@ const el = id => document.getElementById(id);
 const text = (tag, s) => { const n = document.createElement(tag); n.textContent = s; return n; };
 
 // The query is built from the form rather than offered as canned links, and the URL it produces is
-// shown before it is sent: the point of this console is to make the interface of clause 5.1.3.2
+// shown before it is sent: the point of this console is to make the interface of TS 103 770
+// clause 5.1.3.2
 // legible, including that repeated values are sent with square brackets.
 function buildQuery() {
   const parts = [];
@@ -54,7 +55,7 @@ async function run(suffix) {
     `Registered entries are held in registry.json; there is no editing here, because how a registry ` +
     `collects and stores that is out of scope of the specification.`;
   el('params').textContent =
-    'Parameters, in the order clause 5.1.3.2 presents them: ' + (data.parameters || []).join(', ') +
+    'Parameters, in the order TS 103 770 clause 5.1.3.2 presents them: ' + (data.parameters || []).join(', ') +
     '. Repeated values use square brackets and are read as alternatives.';
 
   const lists = (data.providers || []).reduce((n, p) => n + (p.offerings || []).length, 0);
