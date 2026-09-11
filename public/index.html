@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<!-- No inline script and no remote origin: this page reads two endpoints on its own server and
+     renders their contents as text. It has no write side, so there is nothing here to protect
+     beyond not executing what the registry file happens to contain. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'"/>
+<title>DVB-I Service List Registry</title>
+<style>
+  :root { color-scheme: light dark; --line:#d7dbe0; --muted:#666; --bg:#fbfbfc; --accent:#0a6ebd; }
+  @media (prefers-color-scheme: dark) { :root { --line:#333; --muted:#9aa0a6; --bg:#16181a; --accent:#63b3ed; } }
+  body { margin:0; font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); }
+  main { max-width:60rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:1.4rem; margin:0 0 .25rem; }
+  h2 { font-size:1rem; margin:2rem 0 .6rem; }
+  .sub { color:var(--muted); margin:0 0 1.5rem; }
+  table { border-collapse:collapse; width:100%; margin:.5rem 0 1rem; }
+  th,td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85em; }
+  pre { background:rgba(127,127,127,.1); padding:.85rem; border-radius:6px; overflow-x:auto; max-height:22rem; }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.5rem 0; }
+  button { font:inherit; padding:.35rem .7rem; border:1px solid var(--line); border-radius:5px;
+           background:transparent; color:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  .tag { display:inline-block; border:1px solid var(--line); border-radius:4px; padding:0 .35rem;
+         margin-right:.25rem; font-size:.8em; color:var(--muted); }
+  .note { color:var(--muted); font-size:.9em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DVB-I Service List Registry</h1>
+  <p class="sub" id="sub">Loading…</p>
+
+  <h2>What this registry offers</h2>
+  <table>
+    <thead><tr><th>Service list</th><th>Provider</th><th>Countries</th><th>Delivery</th><th>URL</th></tr></thead>
+    <tbody id="offerings"></tbody>
+  </table>
+  <p class="note" id="source"></p>
+
+  <h2>Try a query</h2>
+  <div class="row" id="queries"></div>
+  <p class="note">
+    Parameters, in the order clause 5.1.3.2 presents them:
+    <span id="params"></span>.
+    Repeated values use square brackets and are read as alternatives.
+  </p>
+  <pre id="out">Choose a query above.</pre>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

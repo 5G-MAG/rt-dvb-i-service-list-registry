@@ -227,6 +227,33 @@ app.get('/query', (req, res) => {
   res.type('application/xml').send(buildEntryPoints(registry, req.query));
 });
 
+// A read-only view of what this registry holds, for the page at /. There is deliberately no write
+// side: TS 103 770 clause 5.1.3.2 puts how a registry collects and stores its information out of
+// scope, so an editing UI would implement nothing specified while adding the one thing a discovery
+// endpoint does not otherwise have, a way to change its contents over the network.
+app.get('/api/offerings', (req, res) => {
+  let registry;
+  try { registry = loadRegistry(); }
+  catch (e) {
+    log('error', 'registry read failed', { path: REGISTRY_PATH, error: String(e.message || e) });
+    return res.status(500).json({ error: 'Registry unavailable' });
+  }
+  res.json({
+    registry: registry.registry,
+    parameters: PARAMETERS,
+    delivery: Object.keys(DELIVERY),
+    providers: (registry.providers || []).map(p => ({
+      name: p.name,
+      offerings: (p.offerings || []).map(o => ({
+        id: o.id, name: o.name, uris: o.uris || [], delivery: o.delivery || [],
+        languages: o.languages || [], countries: o.countries || [], regulator: Boolean(o.regulator),
+      })),
+    })),
+  });
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 function startServer() {

@@ -24,6 +24,16 @@ npm start           # http://localhost:7000/query
 `PORT` changes the port, `REGISTRY_PATH` points at a different registry file, `LOG_LEVEL` is one of
 `error`, `warn`, `info` (default) or `debug`.
 
+## The page at `/`
+
+Opening the registry in a browser shows what it offers and lets you run the queries of clause
+5.1.3.2 against it. It is **read only**. There is no editing, and that is deliberate: clause 5.1.3.2
+puts how a registry collects and stores its information out of scope, so an editing interface would
+implement nothing specified while giving a discovery endpoint the one thing it otherwise lacks, a
+way to change its contents over the network.
+
+Registration is by editing `registry.json`.
+
 ## Querying it
 
 ```
