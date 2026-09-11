@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "A registry used only by the tests. The shipped registry.json is operator data, meant to be",
+    "edited, so tests that assert on its contents break whenever somebody adds or removes a list,",
+    "and their coverage quietly shrinks with it. This fixture holds the cases the query rules of",
+    "TS 103 770 clause 5.1.3.2 need: two providers, a regulator list and a non-regulator one,",
+    "overlapping and non-overlapping countries, and more than one delivery type."
+  ],
+  "registry": { "name": "Test Registry" },
+  "providers": [
+    {
+      "name": "Provider One",
+      "offerings": [
+        {
+          "id": "tag:example.com,2026:list:one",
+          "name": "List One",
+          "uris": ["https://one.example.com/service-list.xml"],
+          "delivery": ["dash"],
+          "languages": ["en"],
+          "genres": [],
+          "countries": ["CHE", "DEU"],
+          "regulator": false
+        }
+      ]
+    },
+    {
+      "name": "Provider Two",
+      "offerings": [
+        {
+          "id": "tag:example.com,2026:list:two",
+          "name": "List Two",
+          "uris": ["https://two.example.com/service-list.xml"],
+          "delivery": ["dash", "dvb-t"],
+          "languages": ["it"],
+          "genres": [],
+          "countries": ["ITA"],
+          "regulator": true
+        }
+      ]
+    }
+  ]
+}

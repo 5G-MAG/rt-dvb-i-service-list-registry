@@ -9,7 +9,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { app, buildEntryPoints, validate, values, PARAMETERS } = require('../server.js');
 
-const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'registry.json'), 'utf8'));
+// Tests read a fixture, not the shipped registry.json: that file is operator data and is meant to
+// be edited, so asserting on its contents makes every edit a test failure and lets coverage shrink
+// whenever an entry is removed.
+const registry = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-registry.json'), 'utf8'));
 const count = xml => (xml.match(/<ServiceListOffering>/g) || []).length;
 
 test('the accepted parameters are those the clause lists, in its order', () => {
@@ -52,7 +55,7 @@ test('multiple values for one parameter are alternatives, not a conjunction', ()
 test('different parameters narrow the result together', () => {
   assert.equal(count(buildEntryPoints(registry, { TargetCountry: 'ITA', regulatorListFlag: 'true' })), 1);
   assert.equal(count(buildEntryPoints(registry, { TargetCountry: 'ITA', regulatorListFlag: 'false' })), 0,
-    'the Italian list is a regulator list, so asking for a non-regulator one excludes it');
+    'List Two is a regulator list, so asking for a non-regulator one excludes it');
 });
 
 test('a query matching nothing still returns a document, not an error', () => {
@@ -62,7 +65,7 @@ test('a query matching nothing still returns a document, not an error', () => {
 });
 
 test('ProviderName selects one provider', () => {
-  assert.equal(count(buildEntryPoints(registry, { ProviderName: '5G-MAG' })), 1);
+  assert.equal(count(buildEntryPoints(registry, { ProviderName: 'Provider One' })), 1);
   assert.equal(count(buildEntryPoints(registry, { ProviderName: 'Nobody' })), 0);
 });
 

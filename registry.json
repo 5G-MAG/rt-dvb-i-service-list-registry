@@ -22,27 +22,22 @@
         {
           "id": "tag:5g-mag.org,2026:servicelist:local-demo",
           "name": "5G-MAG",
-          "uris": ["http://localhost:4000/service-list.xml"],
-          "delivery": ["dash"],
-          "languages": ["en"],
+          "uris": [
+            "http://localhost:4000/service-list.xml"
+          ],
+          "delivery": [
+            "dash"
+          ],
+          "languages": [
+            "en"
+          ],
           "genres": [],
-          "countries": ["CHE", "DEU", "ESP"],
+          "countries": [
+            "CHE",
+            "DEU",
+            "ESP"
+          ],
           "regulator": false
-        }
-      ]
-    },
-    {
-      "name": "Example National Authority",
-      "offerings": [
-        {
-          "id": "tag:example.com,2026:servicelist:national",
-          "name": "National Terrestrial List",
-          "uris": ["https://example.com/national/service-list.xml"],
-          "delivery": ["dash", "dvb-t"],
-          "languages": ["it"],
-          "genres": [],
-          "countries": ["ITA"],
-          "regulator": true
         }
       ]
     }

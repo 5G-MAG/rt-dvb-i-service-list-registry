@@ -33,6 +33,10 @@ try { libxml = require('libxmljs2'); }
 catch { console.error('libxmljs2 not installed. Run: npm install'); process.exit(2); }
 
 const { buildEntryPoints } = require('../server.js');
+// Both are validated: the fixture exercises filtering across several providers, and the shipped
+// file is what this registry actually serves, so a bad edit to it fails here rather than at a
+// client.
+const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-registry.json'), 'utf8'));
 const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'registry.json'), 'utf8'));
 
 process.chdir(SCHEMAS);
@@ -57,12 +61,14 @@ console.log(`Schema: ${SCHEMA}\n`);
 
 // The empty query is the one every client can make, and a filtered query has to stay valid too:
 // filtering removes whole offerings and providers, which is where a sequence can go wrong.
-check('no query parameters', buildEntryPoints(registry, {}));
-check('TargetCountry=ITA', buildEntryPoints(registry, { TargetCountry: 'ITA' }));
-check('regulatorListFlag=true', buildEntryPoints(registry, { regulatorListFlag: 'true' }));
-check('Delivery[]=dash&Delivery[]=dvb-t', buildEntryPoints(registry, { 'Delivery[]': ['dash', 'dvb-t'] }));
+check('fixture, no query parameters', buildEntryPoints(fixture, {}));
+check('fixture, TargetCountry=ITA', buildEntryPoints(fixture, { TargetCountry: 'ITA' }));
+check('fixture, regulatorListFlag=true', buildEntryPoints(fixture, { regulatorListFlag: 'true' }));
+check('fixture, Delivery[]=dash&Delivery[]=dvb-t', buildEntryPoints(fixture, { 'Delivery[]': ['dash', 'dvb-t'] }));
 // A query matching nothing still has to produce a valid document: ProviderOffering is minOccurs=0.
-check('no matches', buildEntryPoints(registry, { TargetCountry: 'ZWE' }));
+check('fixture, no matches', buildEntryPoints(fixture, { TargetCountry: 'ZWE' }));
+// And what this registry actually serves.
+check('registry.json as shipped', buildEntryPoints(registry, {}));
 
 console.log(`\n==== ${failures === 0 ? 'ALL VALID' : failures + ' FAILURE(S)'} ====`);
 process.exit(failures === 0 ? 0 : 1);

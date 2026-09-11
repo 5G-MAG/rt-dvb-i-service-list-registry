@@ -3,15 +3,31 @@
 const el = id => document.getElementById(id);
 const text = (tag, s) => { const n = document.createElement(tag); n.textContent = s; return n; };
 
-const QUERIES = [
-  ['everything', ''],
-  ['TargetCountry=CHE', '?TargetCountry=CHE'],
-  ['TargetCountry=ITA', '?TargetCountry=ITA'],
-  ['two countries', '?TargetCountry[]=CHE&TargetCountry[]=ITA'],
-  ['regulator lists', '?regulatorListFlag=true'],
-  ['DASH or DVB-T', '?Delivery[]=dash&Delivery[]=dvb-t'],
-  ['an unknown parameter', '?Nonsense=1'],
-];
+// The query is built from the form rather than offered as canned links, and the URL it produces is
+// shown before it is sent: the point of this console is to make the interface of clause 5.1.3.2
+// legible, including that repeated values are sent with square brackets.
+function buildQuery() {
+  const parts = [];
+  const countries = el('f-country').value.split(/[,\s]+/).map(c => c.trim().toUpperCase()).filter(Boolean);
+  // One value is sent plainly; several use the square bracket form the clause requires.
+  if (countries.length === 1) parts.push('TargetCountry=' + encodeURIComponent(countries[0]));
+  else for (const c of countries) parts.push('TargetCountry[]=' + encodeURIComponent(c));
+
+  const regulator = el('f-regulator').value;
+  if (regulator) parts.push('regulatorListFlag=' + regulator);
+
+  const delivery = el('f-delivery').value;
+  if (delivery) parts.push('Delivery=' + encodeURIComponent(delivery));
+
+  const provider = el('f-provider').value.trim();
+  if (provider) parts.push('ProviderName=' + encodeURIComponent(provider));
+
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+function showUrl() {
+  el('q-url').textContent = '/query' + buildQuery();
+}
 
 async function run(suffix) {
   const out = el('out');
@@ -19,7 +35,9 @@ async function run(suffix) {
   try {
     const res = await fetch('/query' + suffix);
     const body = await res.text();
-    out.textContent = `HTTP ${res.status}\n\n${body}`;
+    const offerings = (body.match(/<ServiceListOffering>/g) || []).length;
+    const summary = res.ok ? `HTTP ${res.status} — ${offerings} offering(s)` : `HTTP ${res.status}`;
+    out.textContent = `${summary}\n\n${body}`;
   } catch (e) {
     out.textContent = String(e);
   }
@@ -71,14 +89,14 @@ async function run(suffix) {
     body.appendChild(tr);
   }
 
-  const row = el('queries');
-  for (const [label, suffix] of QUERIES) {
-    const b = text('button', label);
-    b.addEventListener('click', () => {
-      for (const other of row.children) other.classList.remove('on');
-      b.classList.add('on');
-      run(suffix);
-    });
-    row.appendChild(b);
+  const sel = el('f-delivery');
+  sel.appendChild(text('option', 'any')).value = '';
+  for (const d of data.delivery || []) sel.appendChild(text('option', d)).value = d;
+
+  for (const id of ['f-country', 'f-delivery', 'f-provider', 'f-regulator']) {
+    el(id).addEventListener('input', showUrl);
+    el(id).addEventListener('change', showUrl);
   }
+  el('q').addEventListener('submit', e => { e.preventDefault(); run(buildQuery()); });
+  showUrl();
 })();

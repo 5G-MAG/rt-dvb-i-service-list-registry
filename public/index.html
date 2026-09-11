@@ -46,11 +46,18 @@
   pre { background:rgba(127,127,127,.09); border:1px solid var(--line); border-radius:8px;
         padding:.85rem; overflow-x:auto; max-height:22rem; font-size:.82rem; margin:0; }
 
-  .queries { display:flex; gap:.45rem; flex-wrap:wrap; margin-bottom:.9rem; }
-  button { font:inherit; font-size:.85rem; padding:.4rem .8rem; border:1px solid var(--line);
-           border-radius:7px; background:transparent; color:inherit; cursor:pointer; }
-  button:hover { border-color:var(--brand); color:var(--brand); }
-  button.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .q { display:flex; gap:.75rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:.75rem; }
+  .q label { display:flex; flex-direction:column; gap:.25rem; font-size:.75rem; color:var(--muted);
+             text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+  .q input, .q select { font:inherit; font-size:.88rem; text-transform:none; letter-spacing:normal;
+             padding:.4rem .55rem; border:1px solid var(--line); border-radius:7px;
+             background:var(--card); color:inherit; min-width:9rem; }
+  .q input:focus, .q select:focus { outline:2px solid var(--brand); outline-offset:-1px; }
+  button { font:inherit; font-size:.88rem; font-weight:600; padding:.45rem 1.1rem;
+           border:1px solid var(--brand); border-radius:7px; background:var(--brand);
+           color:#fff; cursor:pointer; }
+  button:hover { filter:brightness(1.08); }
+  .url-line { margin:0 0 .6rem; font-size:.8rem; color:var(--muted); word-break:break-all; }
 
   .tag { display:inline-block; background:var(--brand); color:#fff; border-radius:4px;
          padding:0 .4rem; font-size:.72rem; font-weight:600; margin-left:.35rem; }
@@ -84,10 +91,19 @@
   </div>
 
   <div class="card">
-    <h2>Try a query</h2>
+    <h2>Query</h2>
     <p class="hint" id="params">Loading…</p>
-    <div class="queries" id="queries"></div>
-    <pre id="out">Choose a query above.</pre>
+    <form class="q" id="q">
+      <label>Country<input id="f-country" type="text" placeholder="CHE, DEU" autocomplete="off" spellcheck="false"/></label>
+      <label>Delivery<select id="f-delivery"></select></label>
+      <label>Provider<input id="f-provider" type="text" placeholder="any" autocomplete="off" spellcheck="false"/></label>
+      <label>Regulator list<select id="f-regulator">
+        <option value="">any</option><option value="true">only</option><option value="false">exclude</option>
+      </select></label>
+      <button type="submit">Run</button>
+    </form>
+    <div class="url-line"><code id="q-url">/query</code></div>
+    <pre id="out">Run a query to see the response.</pre>
   </div>
 </main>
 
