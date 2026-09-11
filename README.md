@@ -80,3 +80,8 @@ from a directory outside the working tree; without it the check skips and `npm t
 - `Genre` and `inlineImages` are accepted and validated but do not change the response: no entry in
   the registry file carries genres, and images are never inlined.
 - Server-side region selection (clause 5.6.4) is not implemented; `SRSSupport` is not advertised.
+
+## License
+
+No licence file has been added to this repository yet, so no licence is granted. Add one before
+publishing or sharing it.
