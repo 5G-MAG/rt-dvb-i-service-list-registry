@@ -1,0 +1,4 @@
+node_modules/
+*.log
+# Third-party XSD schemas are never carried here. Supply them via DVBI_SCHEMAS, outside the tree.
+test/schemas/

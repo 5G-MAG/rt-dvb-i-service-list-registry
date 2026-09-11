@@ -1,0 +1,20 @@
+{
+  "name": "rt-dvb-i-service-list-registry",
+  "version": "1.0.0",
+  "description": "DVB-I Service List Registry: answers client queries with Service List Entry Points",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "npm run test:unit && npm run test:xsd",
+    "test:unit": "node --test test/server.test.js",
+    "test:xsd": "node test/xsd-validate.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "libxmljs2": "^0.37.0"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "What this registry knows about. A Service List Provider registers its entry points here.",
+    "",
+    "TS 103 770 V1.2.1 clause 5.1.3.2 leaves how a registry collects and stores this information out",
+    "of scope, so a JSON file is as valid as a database and is easier to read in a reference",
+    "implementation. Each offering is filtered against the query parameters of that same clause.",
+    "",
+    "delivery   which of the DeliveryType children to emit, from: dash, dvb-t, dvb-c, dvb-s, rtsp,",
+    "           multicast-ts, application. A query's Delivery parameter matches these.",
+    "regulator  true if this list is the one published by a national regulator, matched by the",
+    "           regulatorListFlag query parameter."
+  ],
+  "registry": {
+    "name": "5G-MAG Reference Service List Registry",
+    "kind": "urn:dvb:metadata:cs:ServiceListRegistryKindCS:2023:example"
+  },
+  "providers": [
+    {
+      "name": "5G-MAG",
+      "offerings": [
+        {
+          "id": "tag:5g-mag.org,2026:servicelist:local-demo",
+          "name": "5G-MAG",
+          "uris": ["http://localhost:4000/service-list.xml"],
+          "delivery": ["dash"],
+          "languages": ["en"],
+          "genres": [],
+          "countries": ["CHE", "DEU", "ESP"],
+          "regulator": false
+        }
+      ]
+    },
+    {
+      "name": "Example National Authority",
+      "offerings": [
+        {
+          "id": "tag:example.com,2026:servicelist:national",
+          "name": "National Terrestrial List",
+          "uris": ["https://example.com/national/service-list.xml"],
+          "delivery": ["dash", "dvb-t"],
+          "languages": ["it"],
+          "genres": [],
+          "countries": ["ITA"],
+          "regulator": true
+        }
+      ]
+    }
+  ]
+}

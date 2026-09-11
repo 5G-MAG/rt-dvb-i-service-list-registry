@@ -1,0 +1,21 @@
+name: test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Unit tests run here. The XSD conformance check needs a schema this project does not carry
+      # and may not redistribute, so it skips with exit 0 in CI. Run it locally with DVBI_SCHEMAS.
+      - run: npm test
