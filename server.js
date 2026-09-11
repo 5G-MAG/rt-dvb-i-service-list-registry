@@ -4,7 +4,7 @@
 // a known URL that, if queried, can return a list of Service List Entry Points." This implements
 // that endpoint and the query interface the same clause specifies.
 //
-// It is the third component of the DVB-I architecture of clause 4.1, alongside the Service List
+// It is the third component of the DVB-I architecture of TS 103 770 clause 4.1, alongside the
 // Server and the Content Guide Server (both in rt-dvb-i-application-provider) and the DVB-I client
 // (rt-dvb-i-application). Without it a client has nowhere to ask which service lists exist.
 const express = require('express');
@@ -28,7 +28,7 @@ const NS_TYPES = 'urn:dvb:metadata:servicediscovery-types:2023';
 const NS_MPEG7 = 'urn:tva:mpeg7:2008';
 const NS_TVA = 'urn:tva:metadata:2024';
 
-// The query parameters of clause 5.1.3.2, in the order that clause presents them. Anything else is
+// The query parameters of TS 103 770 clause 5.1.3.2, in the order that clause presents them. Any
 // a 400: the clause requires that response "if an undefined query parameter is provided".
 const PARAMETERS = ['TargetCountry', 'regulatorListFlag', 'Delivery', 'Language', 'Genre',
                     'ProviderName', 'inlineImages'];
@@ -45,7 +45,7 @@ const DELIVERY = {
   'application': 'ApplicationDelivery',
 };
 
-// Clause 5.1.3.2: "The maximum length of a fully qualified web service URL including parameters
+// TS 103 770 clause 5.1.3.2: "The maximum length of a fully qualified web service URL including
 // shall not exceed 2 048 characters."
 const MAX_URL = 2048;
 
@@ -59,7 +59,7 @@ function loadRegistry() {
 /**
  * Read a query parameter that may be single or repeated.
  *
- * Clause 5.1.3.2 requires multiple values to be sent with square bracket notation,
+ * TS 103 770 clause 5.1.3.2 requires multiple values to be sent with square bracket notation,
  * "TargetCountry[]=AUT&TargetCountry[]=DEU", and to be interpreted "using the OR logical operator,
  * as alternatives". Express surfaces "x[]=a&x[]=b" as an array under the key "x[]", and a single
  * "x=a" under "x", so both spellings are read here.
