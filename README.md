@@ -27,7 +27,9 @@ npm start           # http://localhost:7000/query
 ## The page at `/`
 
 Opening the registry in a browser shows what it offers and lets you run the queries of clause
-5.1.3.2 against it. It is **read only**. There is no editing, and that is deliberate: clause 5.1.3.2
+5.1.3.2 against it, in the same presentation as the sibling tools: the shared `blue-bar.css` header
+and the 5G-MAG mark, so the four components of a running demo look like one system rather than four
+unrelated pages. It is **read only**. There is no editing, and that is deliberate: clause 5.1.3.2
 puts how a registry collects and stores its information out of scope, so an editing interface would
 implement nothing specified while giving a discovery endpoint the one thing it otherwise lacks, a
 way to change its contents over the network.

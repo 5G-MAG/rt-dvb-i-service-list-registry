@@ -32,8 +32,19 @@ async function run(suffix) {
 
   el('sub').textContent =
     `${data.registry?.name || 'This registry'} answers DVB-I clients asking which service lists exist. ` +
-    `It is the Service List Registry of ETSI TS 103 770 clause 4.1; the query interface is clause 5.1.3.2.`;
-  el('params').textContent = (data.parameters || []).join(', ');
+    `It is the Service List Registry of ETSI TS 103 770 clause 4.1; the query interface is clause 5.1.3.2. ` +
+    `Registered entries are held in registry.json; there is no editing here, because how a registry ` +
+    `collects and stores that is out of scope of the specification.`;
+  el('params').textContent =
+    'Parameters, in the order clause 5.1.3.2 presents them: ' + (data.parameters || []).join(', ') +
+    '. Repeated values use square brackets and are read as alternatives.';
+
+  const lists = (data.providers || []).reduce((n, p) => n + (p.offerings || []).length, 0);
+  const countries = new Set();
+  for (const p of data.providers || []) for (const o of p.offerings || []) (o.countries || []).forEach(c => countries.add(c));
+  el('n-lists').textContent = lists;
+  el('n-providers').textContent = (data.providers || []).length;
+  el('n-countries').textContent = countries.size;
 
   const body = el('offerings');
   for (const provider of data.providers || []) {
@@ -47,7 +58,7 @@ async function run(suffix) {
       tr.appendChild(text('td', (o.countries || []).join(', ') || '—'));
       tr.appendChild(text('td', (o.delivery || []).join(', ') || '—'));
       const urls = document.createElement('td');
-      for (const u of o.uris || []) urls.appendChild(text('div', u)).className = '';
+      for (const u of o.uris || []) urls.appendChild(text('div', u)).className = 'url';
       tr.appendChild(urls);
       body.appendChild(tr);
     }
@@ -60,14 +71,14 @@ async function run(suffix) {
     body.appendChild(tr);
   }
 
-  el('source').textContent =
-    'Registered entries are held in registry.json. There is no editing here: how a registry ' +
-    'collects and stores this is out of scope of the specification, so this page only shows it.';
-
   const row = el('queries');
   for (const [label, suffix] of QUERIES) {
     const b = text('button', label);
-    b.addEventListener('click', () => run(suffix));
+    b.addEventListener('click', () => {
+      for (const other of row.children) other.classList.remove('on');
+      b.classList.add('on');
+      run(suffix);
+    });
     row.appendChild(b);
   }
 })();

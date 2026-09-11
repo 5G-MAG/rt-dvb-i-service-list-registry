@@ -3,55 +3,94 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<!-- No inline script and no remote origin: this page reads two endpoints on its own server and
-     renders their contents as text. It has no write side, so there is nothing here to protect
-     beyond not executing what the registry file happens to contain. -->
+<!-- No inline script, and nothing fetched off this origin except the fonts blue-bar.css imports,
+     which is why style-src and font-src name Google Fonts and nothing else does. This page has no
+     write side, so what it protects is only that a registry entry never becomes markup. -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; base-uri 'none'"/>
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; img-src 'self'; base-uri 'none'"/>
 <title>DVB-I Service List Registry</title>
+<link rel="stylesheet" href="blue-bar.css"/>
 <style>
-  :root { color-scheme: light dark; --line:#d7dbe0; --muted:#666; --bg:#fbfbfc; --accent:#0a6ebd; }
-  @media (prefers-color-scheme: dark) { :root { --line:#333; --muted:#9aa0a6; --bg:#16181a; --accent:#63b3ed; } }
-  body { margin:0; font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); }
-  main { max-width:60rem; margin:0 auto; padding:2rem 1.25rem 4rem; }
-  h1 { font-size:1.4rem; margin:0 0 .25rem; }
-  h2 { font-size:1rem; margin:2rem 0 .6rem; }
-  .sub { color:var(--muted); margin:0 0 1.5rem; }
-  table { border-collapse:collapse; width:100%; margin:.5rem 0 1rem; }
-  th,td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { font-weight:600; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85em; }
-  pre { background:rgba(127,127,127,.1); padding:.85rem; border-radius:6px; overflow-x:auto; max-height:22rem; }
-  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:.5rem 0; }
-  button { font:inherit; padding:.35rem .7rem; border:1px solid var(--line); border-radius:5px;
-           background:transparent; color:inherit; cursor:pointer; }
-  button:hover { border-color:var(--accent); color:var(--accent); }
-  .tag { display:inline-block; border:1px solid var(--line); border-radius:4px; padding:0 .35rem;
-         margin-right:.25rem; font-size:.8em; color:var(--muted); }
-  .note { color:var(--muted); font-size:.9em; }
+  :root {
+    color-scheme: light dark;
+    --brand: rgb(0,160,210);
+    --line: #dfe3e8;
+    --muted: #5f6b76;
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --font: 'Poppins', system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --line:#2b3238; --muted:#9aa4ae; --bg:#15181b; --card:#1c2024; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); font-family:var(--font); font-size:14px; line-height:1.55; }
+  main { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:1.1rem 1.25rem; margin-bottom:1.1rem; }
+  .card > h2 { margin:0 0 .2rem; font-size:1rem; font-weight:600; }
+  .card > .hint { margin:0 0 .9rem; color:var(--muted); font-size:.88rem; }
+
+  .stats { display:flex; gap:.9rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+  .stat { flex:1 1 9rem; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:.9rem 1rem; }
+  .stat .n { font-size:1.6rem; font-weight:700; color:var(--brand); line-height:1.1; }
+  .stat .l { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+
+  table { border-collapse:collapse; width:100%; }
+  th,td { text-align:left; padding:.5rem .65rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  pre { background:rgba(127,127,127,.09); border:1px solid var(--line); border-radius:8px;
+        padding:.85rem; overflow-x:auto; max-height:22rem; font-size:.82rem; margin:0; }
+
+  .queries { display:flex; gap:.45rem; flex-wrap:wrap; margin-bottom:.9rem; }
+  button { font:inherit; font-size:.85rem; padding:.4rem .8rem; border:1px solid var(--line);
+           border-radius:7px; background:transparent; color:inherit; cursor:pointer; }
+  button:hover { border-color:var(--brand); color:var(--brand); }
+  button.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+
+  .tag { display:inline-block; background:var(--brand); color:#fff; border-radius:4px;
+         padding:0 .4rem; font-size:.72rem; font-weight:600; margin-left:.35rem; }
+  .url { color:var(--muted); font-size:.82rem; font-family:ui-monospace,monospace; }
 </style>
 </head>
 <body>
+
+<header class="blue-bar">
+  <div class="blue-bar-logo"><img src="5gmag.png" alt="5G-MAG logo"></div>
+  <div class="blue-bar-title">DVB-I Service List Registry</div>
+  <div class="blue-bar-actions">
+    <a class="blue-bar-link" href="/query" target="_blank" rel="noopener noreferrer">Raw response ↗</a>
+  </div>
+</header>
+
 <main>
-  <h1>DVB-I Service List Registry</h1>
-  <p class="sub" id="sub">Loading…</p>
+  <div class="stats">
+    <div class="stat"><div class="n" id="n-lists">–</div><div class="l">Service lists</div></div>
+    <div class="stat"><div class="n" id="n-providers">–</div><div class="l">Providers</div></div>
+    <div class="stat"><div class="n" id="n-countries">–</div><div class="l">Countries covered</div></div>
+  </div>
 
-  <h2>What this registry offers</h2>
-  <table>
-    <thead><tr><th>Service list</th><th>Provider</th><th>Countries</th><th>Delivery</th><th>URL</th></tr></thead>
-    <tbody id="offerings"></tbody>
-  </table>
-  <p class="note" id="source"></p>
+  <div class="card">
+    <h2>What this registry offers</h2>
+    <p class="hint" id="sub">Loading…</p>
+    <table>
+      <thead><tr><th>Service list</th><th>Provider</th><th>Countries</th><th>Delivery</th><th>URL</th></tr></thead>
+      <tbody id="offerings"></tbody>
+    </table>
+  </div>
 
-  <h2>Try a query</h2>
-  <div class="row" id="queries"></div>
-  <p class="note">
-    Parameters, in the order clause 5.1.3.2 presents them:
-    <span id="params"></span>.
-    Repeated values use square brackets and are read as alternatives.
-  </p>
-  <pre id="out">Choose a query above.</pre>
+  <div class="card">
+    <h2>Try a query</h2>
+    <p class="hint" id="params">Loading…</p>
+    <div class="queries" id="queries"></div>
+    <pre id="out">Choose a query above.</pre>
+  </div>
 </main>
+
 <script src="app.js"></script>
 </body>
 </html>
