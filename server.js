@@ -9,7 +9,9 @@
 // (rt-dvb-i-application). Without it a client has nowhere to ask which service lists exist.
 const express = require('express');
 const fs = require('fs');
+const https = require('https');
 const path = require('path');
+const tls = require('tls');
 
 const app = express();
 // Not 6000: that is on the WHATWG blocked-ports list (X11), so a browser refuses to fetch from it
@@ -375,13 +377,58 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-function startServer() {
-  return app.listen(PORT, () => {
-    log('info', 'Service List Registry listening', { port: PORT });
-    console.log(`DVB-I Service List Registry  ->  http://localhost:${PORT}/query`);
+// TS 103 770 V1.2.1 clause 7.3: "DVB-I metadata endpoint servers shall support TLS version 1.2
+// defined in IETF RFC 5246 [26] and should support TLS version 1.3 defined in IETF RFC 8446 [25]
+// or later." The server sets no version range of its own; it uses Node's tls.DEFAULT_MIN_VERSION
+// and tls.DEFAULT_MAX_VERSION (TLSv1.2 and TLSv1.3 unless changed with the --tls-min-* and
+// --tls-max-* options), and refuses to start when they exclude TLS 1.2.
+const TLS_VERSIONS = ['TLSv1', 'TLSv1.1', 'TLSv1.2', 'TLSv1.3'];
+function checkTlsVersions(min = tls.DEFAULT_MIN_VERSION, max = tls.DEFAULT_MAX_VERSION) {
+  const lo = TLS_VERSIONS.indexOf(min), hi = TLS_VERSIONS.indexOf(max);
+  const v12 = TLS_VERSIONS.indexOf('TLSv1.2'), v13 = TLS_VERSIONS.indexOf('TLSv1.3');
+  if (lo > v12 || hi < v12) return { error: `TLS versions ${min} to ${max} exclude TLSv1.2, which TS 103 770 clause 7.3 requires a server to support.` };
+  if (hi < v13) return { warning: `TLS versions ${min} to ${max} exclude TLSv1.3, which TS 103 770 clause 7.3 says a server should support.` };
+  return {};
+}
+
+/**
+ * Start the registry: over TLS when HTTPS_KEY_PATH and HTTPS_CERT_PATH name a PEM key and
+ * certificate, over plain HTTP when neither is set. A TLS configuration that is incomplete or
+ * cannot be loaded throws, so the registry never answers over HTTP when TLS was asked for.
+ *
+ * TS 103 770 V1.2.1 clause 7.3 requires HTTP over TLS between a client and a Service List
+ * Registry, with one exception: "For the specific case that a DVB-I client connects to a DVB-I
+ * metadata endpoint located on the same private subnet (see clause 3 of IETF RFC 1918 [27]),
+ * HTTP may be used without TLS." Plain HTTP is for that case only; the server does not check it.
+ */
+function startServer({ port = PORT, env = process.env } = {}) {
+  const keyPath = env.HTTPS_KEY_PATH, certPath = env.HTTPS_CERT_PATH;
+  if (!keyPath && !certPath) {
+    log('warn', 'serving plain HTTP: TS 103 770 clause 7.3 allows this only to clients on the same private subnet; set HTTPS_KEY_PATH and HTTPS_CERT_PATH for TLS');
+    return app.listen(port, () => {
+      log('info', 'Service List Registry listening', { port, tls: false });
+      console.log(`DVB-I Service List Registry  ->  http://localhost:${port}/query`);
+    });
+  }
+  if (!keyPath || !certPath) {
+    throw new Error('HTTPS_KEY_PATH and HTTPS_CERT_PATH must be set together');
+  }
+  const versions = checkTlsVersions();
+  if (versions.error) throw new Error(versions.error);
+  if (versions.warning) log('warn', versions.warning);
+  const server = https.createServer({ key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }, app);
+  return server.listen(port, () => {
+    log('info', 'Service List Registry listening', { port, tls: true, minVersion: tls.DEFAULT_MIN_VERSION, maxVersion: tls.DEFAULT_MAX_VERSION });
+    console.log(`DVB-I Service List Registry  ->  https://localhost:${port}/query`);
   });
 }
 
-if (require.main === module) startServer();
+if (require.main === module) {
+  try { startServer(); }
+  catch (e) {
+    log('error', 'Service List Registry not started', { error: String(e.message || e) });
+    process.exit(1);
+  }
+}
 
-module.exports = { app, startServer, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY };
+module.exports = { app, startServer, checkTlsVersions, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY };

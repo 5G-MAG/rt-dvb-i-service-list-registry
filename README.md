@@ -67,11 +67,29 @@ npm start           # http://localhost:7000/query
 
 ## Configuration
 
-Three environment variables:
+Five environment variables:
 
 - `PORT` changes the port (default 7000).
 - `REGISTRY_PATH` points at a different registry file (default `registry.json`).
 - `LOG_LEVEL` is one of `error`, `warn`, `info` (default) or `debug`.
+- `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` name a PEM private key and certificate. With both set,
+  the registry serves HTTPS only, on `PORT`.
+
+ETSI TS 103 770 V1.2.1 clause 7.3 requires a client to reach a Service List Registry over HTTP over
+TLS, except when both are on the same private subnet, where plain HTTP may be used. So:
+
+```bash
+HTTPS_KEY_PATH=/etc/tls/key.pem HTTPS_CERT_PATH=/etc/tls/cert.pem npm start   # https://<host>:7000/query
+```
+
+With neither variable set the registry serves plain HTTP and logs a warning; use that only on a
+private subnet shared with the clients, for example a local demo. If only one is set, or the key or
+certificate cannot be loaded, the registry does not start: it never falls back to plain HTTP.
+
+The same clause requires a server to support TLS 1.2 and says it should support TLS 1.3. The
+registry uses Node's default TLS versions, TLS 1.2 to TLS 1.3. It refuses to start if they exclude
+TLS 1.2 (for example under `node --tls-min-v1.3`) and logs a warning if they exclude TLS 1.3 (under
+`node --tls-max-v1.2`).
 
 ## Development
 
@@ -169,6 +187,10 @@ itself, as `IdentifierBasedDeliveryParameters` holding an `mbms://` locator; see
   accepted, since the ISO 3166 code list and the language subtag registry are not checked.
 - `inlineImages` is accepted and validated but does not change the response: images are never
   inlined.
+- In plain HTTP mode the registry does not check that a client is on its private subnet; that is
+  left to the deployment.
+- The TLS profile of clause 7.3 (root certificates, cipher suites, signature algorithms, key sizes
+  and curves, defined in clause 11.2 of ETSI TS 102 796) is not applied; Node's defaults are used.
 - Server-side region selection (clause 5.6.4) is not implemented; `SRSSupport` is not advertised.
 - A client learns nothing about 5G delivery from this registry, since TS 103 770 defines no way to
   say it (see above).

@@ -228,3 +228,106 @@ test('no Delivery query value for 5G delivery, and no 5G marker in responses', (
   assert.equal(validate({ Delivery: '5g' }).status, 400);
   assert.doesNotMatch(buildEntryPoints(registry, {}), /dvbi-5g|OtherDeliveryParameters/);
 });
+
+// TS 103 770 clause 7.3: a Service List Registry is reached over HTTP over TLS, and a metadata
+// endpoint server "shall support TLS version 1.2" and "should support TLS version 1.3". The key and
+// certificate are made for the test with openssl, for localhost and 127.0.0.1.
+const os = require('node:os');
+const tls = require('node:tls');
+const https = require('node:https');
+const { execFileSync, spawnSync } = require('node:child_process');
+const { startServer, checkTlsVersions } = require('../server.js');
+
+function makeCertificate() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-tls-'));
+  const key = path.join(dir, 'key.pem'), cert = path.join(dir, 'cert.pem');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+    '-nodes', '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=localhost',
+    '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
+  return { dir, key, cert };
+}
+
+test('with a key and certificate configured, the registry answers over TLS 1.2 and TLS 1.3', async () => {
+  const pki = makeCertificate();
+  const ca = fs.readFileSync(pki.cert);
+  const server = startServer({ port: 0, env: { HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert } });
+  await new Promise(r => server.once('listening', r));
+  const port = server.address().port;
+  try {
+    for (const version of ['TLSv1.2', 'TLSv1.3']) {
+      const negotiated = await new Promise((resolve, reject) => {
+        const s = tls.connect({ host: '127.0.0.1', port, ca, servername: 'localhost',
+          minVersion: version, maxVersion: version }, () => { resolve(s.getProtocol()); s.end(); });
+        s.on('error', reject);
+      });
+      assert.equal(negotiated, version);
+    }
+    const res = await new Promise((resolve, reject) => {
+      https.get({ host: '127.0.0.1', port, path: '/query?TargetCountry=ITA', ca, servername: 'localhost' }, r => {
+        let body = '';
+        r.on('data', c => { body += c; });
+        r.on('end', () => resolve({ status: r.statusCode, type: r.headers['content-type'], body }));
+      }).on('error', reject);
+    });
+    assert.equal(res.status, 200);
+    assert.match(res.type || '', /xml/);
+    assert.match(res.body, /<ServiceListEntryPoints/);
+
+    // The TLS port does not also answer plain HTTP.
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/query`));
+  } finally {
+    server.close();
+    fs.rmSync(pki.dir, { recursive: true, force: true });
+  }
+});
+
+test('with neither key nor certificate configured, the registry serves plain HTTP', async () => {
+  const server = startServer({ port: 0, env: {} });
+  await new Promise(r => server.once('listening', r));
+  try {
+    assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/query`)).status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test('a TLS configuration that is incomplete or cannot be loaded stops the server, with no HTTP fallback', () => {
+  const pki = makeCertificate();
+  try {
+    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: pki.key } }), /set together/);
+    assert.throws(() => startServer({ port: 0, env: { HTTPS_CERT_PATH: pki.cert } }), /set together/);
+    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: path.join(pki.dir, 'missing.pem'), HTTPS_CERT_PATH: pki.cert } }), /ENOENT/);
+    const bad = path.join(pki.dir, 'bad.pem');
+    fs.writeFileSync(bad, 'not a key');
+    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert } }));
+
+    // Started as a program, it exits non-zero instead of listening.
+    const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+      env: { ...process.env, PORT: '0', HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' },
+      encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /not started/);
+  } finally {
+    fs.rmSync(pki.dir, { recursive: true, force: true });
+  }
+});
+
+test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported', () => {
+  assert.deepEqual(checkTlsVersions('TLSv1.2', 'TLSv1.3'), {});
+  assert.deepEqual(checkTlsVersions('TLSv1', 'TLSv1.3'), {});
+  assert.match(checkTlsVersions('TLSv1.3', 'TLSv1.3').error, /TLSv1.2/);
+  assert.match(checkTlsVersions('TLSv1', 'TLSv1.1').error, /TLSv1.2/);
+  assert.match(checkTlsVersions('TLSv1.2', 'TLSv1.2').warning, /TLSv1.3/);
+
+  // Node's own option for the minimum version reaches the check.
+  const pki = makeCertificate();
+  try {
+    const run = spawnSync(process.execPath, ['--tls-min-v1.3', path.join(__dirname, '..', 'server.js')], {
+      env: { ...process.env, PORT: '0', HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' },
+      encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /exclude TLSv1.2/);
+  } finally {
+    fs.rmSync(pki.dir, { recursive: true, force: true });
+  }
+});
