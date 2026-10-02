@@ -127,20 +127,32 @@ function validate(query) {
   return null;
 }
 
-/** Multiple values for one parameter are alternatives; different parameters all have to match. */
+/**
+ * Multiple values for one parameter are alternatives; different parameters all have to match.
+ *
+ * An offering that specifies no value for TargetCountry, Language or Genre matches any query for
+ * that parameter. TS 103 770 V1.2.1 clause 5.1.3.2 lists among the offerings to include those that
+ * "do not specify a TargetCountry."; clause 5.3.5, table 12: "If no language is specified,
+ * responses to Service List Registry queries shall include the service list offering." and "If no
+ * genre are specified, responses to Service List Registry queries shall include the service list
+ * offering."
+ */
 function matches(offering, query) {
   const countries = values(query, 'TargetCountry').map(s => s.toUpperCase());
-  if (countries.length && !countries.some(c => (offering.countries || []).includes(c))) return false;
+  const offeredCountries = offering.countries || [];
+  if (countries.length && offeredCountries.length && !countries.some(c => offeredCountries.includes(c))) return false;
 
   const delivery = values(query, 'Delivery').map(s => s.toLowerCase());
   const declaredDelivery = (offering.delivery || []).map(s => s.toLowerCase());
   if (delivery.length && !delivery.some(d => (DELIVERY_QUERY[d] || []).some(e => declaredDelivery.includes(e)))) return false;
 
   const languages = values(query, 'Language').map(s => s.toLowerCase());
-  if (languages.length && !languages.some(l => (offering.languages || []).includes(l))) return false;
+  const offeredLanguages = offering.languages || [];
+  if (languages.length && offeredLanguages.length && !languages.some(l => offeredLanguages.includes(l))) return false;
 
   const genres = values(query, 'Genre');
-  if (genres.length && !genres.some(g => (offering.genres || []).includes(g))) return false;
+  const offeredGenres = offering.genres || [];
+  if (genres.length && offeredGenres.length && !genres.some(g => offeredGenres.includes(g))) return false;
 
   const flag = values(query, 'regulatorListFlag')[0];
   if (flag !== undefined && (/^true$/i.test(flag)) !== Boolean(offering.regulator)) return false;

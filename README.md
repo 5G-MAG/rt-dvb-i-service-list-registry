@@ -115,6 +115,8 @@ The parameters are those clause 5.1.3.2 lists, in the order it presents them: `T
 `regulatorListFlag`, `Delivery`, `Language`, `Genre`, `ProviderName`, `inlineImages`. Repeated
 values use square brackets, `TargetCountry[]=AUT&TargetCountry[]=DEU`. The clause requires them to
 be read as alternatives: values for one parameter are OR, different parameters narrow together.
+An offering that specifies no `TargetCountry`, no `Language` or no `Genre` is included in any query
+for that parameter, as clause 5.1.3.2 and table 12 of clause 5.3.5 require.
 
 - A query naming an unknown parameter, or giving an invalid value, is refused with 400, as the
   clause requires.

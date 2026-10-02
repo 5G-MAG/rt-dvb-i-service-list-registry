@@ -83,6 +83,34 @@ test('a query matching nothing still returns a document, not an error', () => {
   assert.match(xml, /<ServiceListEntryPoints/, 'ProviderOffering is optional, so an empty answer is well-formed');
 });
 
+// Clause 5.1.3.2 includes offerings that "do not specify a TargetCountry"; table 12 does the same
+// for an offering with no Language and one with no Genre.
+test('an offering that specifies no TargetCountry, Language or Genre matches a query for it', () => {
+  const open = {
+    registry: { name: 'Test Registry' },
+    providers: [{
+      name: 'Provider',
+      offerings: [
+        { id: 'tag:example.com,2026:list:constrained', name: 'Constrained', uris: ['https://c.example.com/sl.xml'],
+          delivery: ['dash'], languages: ['it'], genres: ['urn:dvb:metadata:cs:ContentSubject:2019:4'], countries: ['ITA'] },
+        { id: 'tag:example.com,2026:list:open', name: 'Open', uris: ['https://o.example.com/sl.xml'],
+          delivery: ['dash'], languages: [], genres: [], countries: [] },
+        { id: 'tag:example.com,2026:list:absent', name: 'Absent', uris: ['https://a.example.com/sl.xml'],
+          delivery: ['dash'] },
+      ],
+    }],
+  };
+  const names = xml => [...xml.matchAll(/<dvbisd-t:ServiceListName>([^<]*)</g)].map(m => m[1]);
+
+  assert.deepEqual(names(buildEntryPoints(open, { TargetCountry: 'DEU' })), ['Open', 'Absent']);
+  assert.deepEqual(names(buildEntryPoints(open, { TargetCountry: 'ITA' })), ['Constrained', 'Open', 'Absent']);
+  assert.deepEqual(names(buildEntryPoints(open, { Language: 'fr' })), ['Open', 'Absent']);
+  assert.deepEqual(names(buildEntryPoints(open, { Language: 'it' })), ['Constrained', 'Open', 'Absent']);
+  assert.deepEqual(names(buildEntryPoints(open, { Genre: 'urn:dvb:metadata:cs:ContentSubject:2019:1' })), ['Open', 'Absent']);
+  assert.deepEqual(names(buildEntryPoints(open, { Genre: 'urn:dvb:metadata:cs:ContentSubject:2019:4' })),
+    ['Constrained', 'Open', 'Absent']);
+});
+
 test('ProviderName selects one provider', () => {
   assert.equal(count(buildEntryPoints(registry, { ProviderName: 'Provider One' })), 1);
   assert.equal(count(buildEntryPoints(registry, { ProviderName: 'Nobody' })), 0);
