@@ -181,8 +181,8 @@ function parseGenre(v) {
 /**
  * Load the terms of the Genre schemes from `dir`: a Map from scheme URI to its set of termIDs.
  * Throws when a file is missing or unreadable, when its ClassificationScheme@uri is not the scheme
- * it is named for, or when it defines no terms, so a registry asked to check terms never starts
- * without them. The scheme files are not part of this repository.
+ * it is named for, or when it defines no terms, so the registry never starts without them. The
+ * scheme files are not part of this repository.
  */
 function loadGenreSchemes(dir) {
   const terms = new Map();
@@ -205,7 +205,8 @@ function loadGenreSchemes(dir) {
   return terms;
 }
 
-// The loaded Genre terms, or null when GENRE_CS_DIR is not set and only the value form is checked.
+// The loaded Genre terms. startServer loads them from GENRE_CS_DIR before listening; while none are
+// loaded (app used without startServer) no value is a term of them, so every Genre value gets 400.
 let genreTerms = null;
 
 const xe = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -261,13 +262,12 @@ function validate(query) {
     }
   }
   for (const g of values(query, 'Genre')) {
-    // Table 12, row Genre names the schemes; with their files loaded the term has to be one of
-    // theirs, without them only the form is checked (see parseGenre).
+    // Table 12, row Genre names the schemes; the term has to be one the loaded files define.
     const ref = parseGenre(g);
     if (!ref) {
       return { status: 400, message: `Invalid Genre "${g}": expected a term of ${Object.keys(GENRE_SCHEMES).join(', ')}, written as the scheme URI, ":", the termID.` };
     }
-    if (genreTerms && !genreTerms.get(ref.uri).has(ref.termID)) {
+    if (!genreTerms || !genreTerms.get(ref.uri).has(ref.termID)) {
       return { status: 400, message: `Invalid Genre "${g}": ${ref.uri} has no term "${ref.termID}".` };
     }
   }
@@ -465,7 +465,8 @@ function checkTlsVersions(min = tls.DEFAULT_MIN_VERSION, max = tls.DEFAULT_MAX_V
 /**
  * Start the registry: over TLS when HTTPS_KEY_PATH and HTTPS_CERT_PATH name a PEM key and
  * certificate, over plain HTTP when neither is set. A TLS configuration that is incomplete or
- * cannot be loaded throws, so the registry never answers over HTTP when TLS was asked for.
+ * cannot be loaded throws, so the registry never answers over HTTP when TLS was asked for. It also
+ * throws when GENRE_CS_DIR is unset or does not hold the Genre classification schemes.
  *
  * TS 103 770 V1.2.1 clause 7.3 requires HTTP over TLS between a client and a Service List
  * Registry, with one exception: "For the specific case that a DVB-I client connects to a DVB-I
@@ -473,16 +474,14 @@ function checkTlsVersions(min = tls.DEFAULT_MIN_VERSION, max = tls.DEFAULT_MAX_V
  * HTTP may be used without TLS." Plain HTTP is for that case only; the server does not check it.
  */
 function startServer({ port = PORT, env = process.env } = {}) {
-  // Genre terms are checked only against scheme files the operator supplies; a directory that is
-  // set but does not hold them stops the server rather than leaving terms unchecked.
-  if (env.GENRE_CS_DIR) {
-    genreTerms = loadGenreSchemes(env.GENRE_CS_DIR);
-    log('info', 'Genre classification schemes loaded', { dir: env.GENRE_CS_DIR,
-      terms: Object.fromEntries([...genreTerms].map(([uri, ids]) => [uri, ids.size])) });
-  } else {
-    genreTerms = null;
-    log('warn', 'GENRE_CS_DIR not set: Genre query values are checked for form only, their terms are not checked');
+  // Genre terms are checked against scheme files the operator supplies, which this repository does
+  // not carry. Without them the registry does not start, so Genre values are never left unchecked.
+  if (!env.GENRE_CS_DIR) {
+    throw new Error(`GENRE_CS_DIR is not set: it must name a directory holding ${Object.values(GENRE_SCHEMES).join(', ')}, the classification schemes Genre values are taken from (ETSI TS 103 770 V1.2.1 clause 5.3.5, table 12, row Genre)`);
   }
+  genreTerms = loadGenreSchemes(env.GENRE_CS_DIR);
+  log('info', 'Genre classification schemes loaded', { dir: env.GENRE_CS_DIR,
+    terms: Object.fromEntries([...genreTerms].map(([uri, ids]) => [uri, ids.size])) });
   const keyPath = env.HTTPS_KEY_PATH, certPath = env.HTTPS_CERT_PATH;
   if (!keyPath && !certPath) {
     log('warn', 'serving plain HTTP: TS 103 770 clause 7.3 allows this only to clients on the same private subnet; set HTTPS_KEY_PATH and HTTPS_CERT_PATH for TLS');

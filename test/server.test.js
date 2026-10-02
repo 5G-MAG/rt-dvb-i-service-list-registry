@@ -3,7 +3,7 @@
 // which status code an unacceptable query gets.
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'error';
 
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -246,6 +246,16 @@ function runServer(nodeArgs, env) {
     { env, encoding: 'utf8', timeout: 10000 });
 }
 
+// The registry does not start without GENRE_CS_DIR, so every test that starts it names one. These
+// are small synthetic schemes written for the run, one term each under the three scheme URIs, so
+// the suite runs where the real files are not held. They are not the content of the real files.
+const genreScheme = (uri, id) => `<?xml version="1.0"?>\n<ClassificationScheme uri="${uri}"><Term termID="${id}"/></ClassificationScheme>\n`;
+const GENRE_FIXTURE = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-genre-fixture-'));
+fs.writeFileSync(path.join(GENRE_FIXTURE, 'ContentCS.xml'), genreScheme('urn:tva:metadata:cs:ContentCS:2011', '3.1'));
+fs.writeFileSync(path.join(GENRE_FIXTURE, 'FormatCS.xml'), genreScheme('urn:tva:metadata:cs:FormatCS:2011', '2.1'));
+fs.writeFileSync(path.join(GENRE_FIXTURE, 'DVBContentSubjectCS-2019.xml'), genreScheme('urn:dvb:metadata:cs:ContentSubject:2019', '1'));
+after(() => fs.rmSync(GENRE_FIXTURE, { recursive: true, force: true }));
+
 function makeCertificate() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-tls-'));
   const key = path.join(dir, 'key.pem'), cert = path.join(dir, 'cert.pem');
@@ -258,7 +268,7 @@ function makeCertificate() {
 test('with a key and certificate configured, the registry answers over TLS 1.2 and TLS 1.3', async () => {
   const pki = makeCertificate();
   const ca = fs.readFileSync(pki.cert);
-  const server = startServer({ port: 0, env: { HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert } });
+  const server = startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert } });
   await new Promise(r => server.once('listening', r));
   const port = server.address().port;
   try {
@@ -290,7 +300,7 @@ test('with a key and certificate configured, the registry answers over TLS 1.2 a
 });
 
 test('with neither key nor certificate configured, the registry serves plain HTTP', async () => {
-  const server = startServer({ port: 0, env: {} });
+  const server = startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE } });
   await new Promise(r => server.once('listening', r));
   try {
     assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/query`)).status, 200);
@@ -302,15 +312,15 @@ test('with neither key nor certificate configured, the registry serves plain HTT
 test('a TLS configuration that is incomplete or cannot be loaded stops the server, with no HTTP fallback', () => {
   const pki = makeCertificate();
   try {
-    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: pki.key } }), /set together/);
-    assert.throws(() => startServer({ port: 0, env: { HTTPS_CERT_PATH: pki.cert } }), /set together/);
-    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: path.join(pki.dir, 'missing.pem'), HTTPS_CERT_PATH: pki.cert } }), /ENOENT/);
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: pki.key } }), /set together/);
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_CERT_PATH: pki.cert } }), /set together/);
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: path.join(pki.dir, 'missing.pem'), HTTPS_CERT_PATH: pki.cert } }), /ENOENT/);
     const bad = path.join(pki.dir, 'bad.pem');
     fs.writeFileSync(bad, 'not a key');
-    assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert } }));
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert } }));
 
     // Started as a program, it exits non-zero instead of listening.
-    const run = runServer([], { PORT: '0', HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
+    const run = runServer([], { PORT: '0', GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /not started/);
   } finally {
@@ -328,7 +338,7 @@ test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported',
   // Node's own option for the minimum version reaches the check.
   const pki = makeCertificate();
   try {
-    const run = runServer(['--tls-min-v1.3'], { PORT: '0', HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
+    const run = runServer(['--tls-min-v1.3'], { PORT: '0', GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /exclude TLSv1.2/);
   } finally {
@@ -338,8 +348,9 @@ test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported',
 
 // Genre values (TS 103 770 V1.2.1 clause 5.3.5, table 12, row Genre) are terms of ContentCS,
 // FormatCS or the clause D.5 ContentSubject scheme, written as the scheme URI, ":", the termID.
-// The scheme files are not in this repository: the cases that need them read GENRE_CS_DIR and skip
-// without it, as the XSD check does without DVBI_SCHEMAS.
+// The scheme files are not in this repository: the case that needs the real files reads
+// GENRE_CS_DIR and skips without it, as the XSD check does without DVBI_SCHEMAS. The others use the
+// synthetic GENRE_FIXTURE.
 const { loadGenreSchemes, GENRE_SCHEMES } = require('../server.js');
 const GENRE_DIR = process.env.GENRE_CS_DIR;
 const genreFilesHeld = Boolean(GENRE_DIR) &&
@@ -370,12 +381,32 @@ test('a malformed Genre value, or a term of another scheme, is refused with 400'
   }
 });
 
-test('without GENRE_CS_DIR, Genre values are checked for form only', async () => {
-  const unknown = 'urn:tva:metadata:cs:ContentCS:2011:9.9.9';
-  const s = await queryStatuses({}, [enc('urn:dvb:metadata:cs:ContentSubject:2019:1'), enc(unknown), enc('Drama')]);
-  assert.equal(s[enc('urn:dvb:metadata:cs:ContentSubject:2019:1')], 200);
-  assert.equal(s[enc(unknown)], 200, 'the term is not checked when no scheme file is loaded');
-  assert.equal(s[enc('Drama')], 400);
+test('with GENRE_CS_DIR unset, the registry refuses to start', () => {
+  const why = /GENRE_CS_DIR is not set.*ContentCS\.xml, FormatCS\.xml, DVBContentSubjectCS-2019\.xml.*TS 103 770 V1\.2\.1 clause 5\.3\.5, table 12, row Genre/;
+  assert.throws(() => startServer({ port: 0, env: {} }), why);
+  assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: '' } }), why);
+
+  // Started as a program, it exits 1 instead of listening.
+  const run = runServer([], { PORT: '0', LOG_LEVEL: 'error' });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /not started/);
+  assert.match(run.stderr, why);
+});
+
+test('a Genre term the loaded schemes do not define is refused with 400', async () => {
+  const defined = ['urn:tva:metadata:cs:ContentCS:2011:3.1', 'urn:tva:metadata:cs:FormatCS:2011:2.1',
+    'urn:dvb:metadata:cs:ContentSubject:2019:1'];
+  // 2 is a ContentSubject term in the real scheme but not in the fixture: the loaded files decide.
+  const undefinedTerms = ['urn:tva:metadata:cs:ContentCS:2011:9.9.9', 'urn:dvb:metadata:cs:ContentSubject:2019:2'];
+  const s = await queryStatuses({ GENRE_CS_DIR: GENRE_FIXTURE }, [...defined, ...undefinedTerms, 'Drama'].map(enc));
+  for (const g of defined) assert.equal(s[enc(g)], 200, `Genre "${g}"`);
+  for (const g of [...undefinedTerms, 'Drama']) assert.equal(s[enc(g)], 400, `Genre "${g}"`);
+
+  // With no schemes loaded (the app used without startServer), no value is a term of them.
+  const bare = spawnSync(process.execPath, ['-e',
+    `process.stdout.write(String(require(${JSON.stringify(path.join(__dirname, '..', 'server.js'))}).validate({ Genre: ${JSON.stringify(defined[0])} })?.status))`],
+    { env: { LOG_LEVEL: 'error' }, encoding: 'utf8', timeout: 10000 });
+  assert.equal(bare.stdout, '400');
 });
 
 test('with GENRE_CS_DIR, a term the schemes define is accepted and any other is refused with 400',
@@ -399,14 +430,13 @@ test('with GENRE_CS_DIR, a term the schemes define is accepted and any other is 
 
 test('a GENRE_CS_DIR missing a scheme file, or holding the wrong scheme, stops the server', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-genre-'));
-  const scheme = (uri, id) => `<?xml version="1.0"?>\n<ClassificationScheme uri="${uri}"><Term termID="${id}"/></ClassificationScheme>\n`;
   try {
-    fs.writeFileSync(path.join(dir, 'ContentCS.xml'), scheme('urn:tva:metadata:cs:ContentCS:2011', '3.1'));
-    fs.writeFileSync(path.join(dir, 'FormatCS.xml'), scheme('urn:tva:metadata:cs:FormatCS:2011', '2.1'));
+    fs.writeFileSync(path.join(dir, 'ContentCS.xml'), genreScheme('urn:tva:metadata:cs:ContentCS:2011', '3.1'));
+    fs.writeFileSync(path.join(dir, 'FormatCS.xml'), genreScheme('urn:tva:metadata:cs:FormatCS:2011', '2.1'));
     assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /DVBContentSubjectCS-2019\.xml/);
     assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: path.join(dir, 'absent') } }), /ENOENT/);
 
-    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), scheme('urn:tva:metadata:cs:ContentCS:2011', '1'));
+    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), genreScheme('urn:tva:metadata:cs:ContentCS:2011', '1'));
     assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /is not the classification scheme urn:dvb:metadata:cs:ContentSubject:2019/);
     fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), '<ClassificationScheme uri="urn:dvb:metadata:cs:ContentSubject:2019"/>');
     assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /defines no terms/);
@@ -418,7 +448,7 @@ test('a GENRE_CS_DIR missing a scheme file, or holding the wrong scheme, stops t
     assert.match(run.stderr, /not started.*DVBContentSubjectCS-2019\.xml/);
 
     // With all three present and well formed, it starts and checks against them.
-    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), scheme('urn:dvb:metadata:cs:ContentSubject:2019', '1'));
+    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), genreScheme('urn:dvb:metadata:cs:ContentSubject:2019', '1'));
     const terms = loadGenreSchemes(dir);
     assert.ok(terms.get('urn:dvb:metadata:cs:ContentSubject:2019').has('1'));
   } finally {

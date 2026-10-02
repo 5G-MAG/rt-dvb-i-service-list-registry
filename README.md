@@ -62,8 +62,12 @@ git clone https://github.com/5G-MAG/rt-dvb-i-service-list-registry.git
 
 ```bash
 npm install
-npm start           # http://localhost:7000/query
+GENRE_CS_DIR=/srv/dvb-i/cs npm start   # http://localhost:7000/query
 ```
+
+`GENRE_CS_DIR` is required: it names a directory holding the classification scheme files that
+`Genre` values are checked against, which are not part of this repository. Without it the registry
+does not start. See [Genre values](#genre-values) for the files and where they come from.
 
 ## Configuration
 
@@ -74,8 +78,8 @@ Six environment variables:
 - `LOG_LEVEL` is one of `error`, `warn`, `info` (default) or `debug`.
 - `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` name a PEM private key and certificate. With both set,
   the registry serves HTTPS only, on `PORT`.
-- `GENRE_CS_DIR` names a directory holding the classification schemes that `Genre` values are
-  checked against (see [Genre values](#genre-values)).
+- `GENRE_CS_DIR` (required) names a directory holding the classification schemes that `Genre`
+  values are checked against (see [Genre values](#genre-values)).
 
 ETSI TS 103 770 V1.2.1 clause 7.3 requires a client to reach a Service List Registry over HTTP over
 TLS, except when both are on the same private subnet, where plain HTTP may be used. So:
@@ -110,8 +114,12 @@ The accepted scheme URIs are `urn:tva:metadata:cs:ContentCS:2011`,
 reference is in ISO/IEC 15938-5, which was not available here, so this form is a reading of
 TS 103 770 rather than a check against that standard.
 
-The scheme files are not carried in this repository and none may be. Point `GENRE_CS_DIR` at a
-directory outside the working tree that holds them under these names:
+The scheme files are not carried in this repository and none may be; obtain them from their
+publishers. `ContentCS.xml` and `FormatCS.xml` are classification schemes of the TV-Anytime
+metadata specification, ETSI TS 102 822-3-1. `DVBContentSubjectCS-2019.xml` is one of the files in
+the electronic attachment archive that accompanies ETSI TS 103 770 (annex B lists it). Copy the
+three into one directory outside the working tree, under these names, and point `GENRE_CS_DIR` at
+it:
 
 | File | Scheme |
 |---|---|
@@ -123,20 +131,17 @@ directory outside the working tree that holds them under these names:
 GENRE_CS_DIR=/srv/dvb-i/cs npm start
 ```
 
-- With `GENRE_CS_DIR` set, the files are read at start. A `Genre` value that is not of the form
-  above, names another scheme, or names a term the scheme does not define gets 400. If a file is
-  missing or unreadable, its `ClassificationScheme@uri` is not the scheme it is named for, or it
-  defines no terms, the registry does not start.
-- With `GENRE_CS_DIR` unset, the registry logs a warning at start and checks the form only: a
-  malformed value or another scheme gets 400, an undefined term of one of the three schemes is
-  accepted.
+The files are read at start. A `Genre` value that is not of the form above, names another scheme,
+or names a term the loaded scheme does not define gets 400. The registry does not start, and as a
+program exits 1, if `GENRE_CS_DIR` is unset, or a file is missing or unreadable, its
+`ClassificationScheme@uri` is not the scheme it is named for, or it defines no terms.
 
 ## Development
 
 ```bash
 npm test                                                   # unit tests, XSD skips without schemas
 DVBI_SCHEMAS=~/.local/share/dvb-i-schemas/etsi npm test     # with conformance checking
-GENRE_CS_DIR=~/.local/share/dvb-i-schemas/etsi npm test     # with Genre terms checked
+GENRE_CS_DIR=~/.local/share/dvb-i-schemas/etsi npm test     # also with the real Genre schemes
 ```
 
 The unit tests follow the clause rather than this implementation: which parameters exist, how
@@ -146,10 +151,11 @@ filtering is where a schema sequence tends to break.
 
 No schema file is carried in this repository and none may be. Supply them through `DVBI_SCHEMAS`
 from a directory outside the working tree; without it the check skips and `npm test` stays green.
-The Genre cases that need the scheme files read `GENRE_CS_DIR` in the same way and skip without
-it; the form-only behaviour and the refusal to start on a missing or wrong file are tested either
-way. The CI workflow, `.github/workflows/test.yml`, runs `npm test` without schemas, so the XSD
-check and those Genre cases skip there.
+The tests that start the registry give it small synthetic scheme files, written to a temporary
+directory for the run, so `npm test` needs no scheme file. The one Genre case that checks the real
+files reads `GENRE_CS_DIR` in the same way as the XSD check reads `DVBI_SCHEMAS` and skips without
+it. The CI workflow, `.github/workflows/test.yml`, runs `npm test` without either, so the XSD check
+and that Genre case skip there.
 
 ## The page at `/`
 
@@ -225,7 +231,6 @@ itself, as `IdentifierBasedDeliveryParameters` holding an `mbms://` locator; see
 - Registration is by editing `registry.json`. The M interface of clause 4.1, by which a provider
   registers its own entry points, is not implemented.
 - The form of a `Genre` value is a reading of TS 103 770, not checked against ISO/IEC 15938-5.
-  Without `GENRE_CS_DIR`, undefined terms of the three schemes are accepted.
 - `TargetCountry` and `Language` are checked against their schema types only: `ZZZ` and `xx` are
   accepted, since the ISO 3166 code list and the language subtag registry are not checked.
 - `inlineImages` is accepted and validated but does not change the response: images are never
