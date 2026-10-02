@@ -148,6 +148,66 @@ const MAX_URL = 2048;
 const ISO_3166_LIST = /^[A-Z]{3}(,[A-Z]{3})*$/;
 const LANGUAGE = /^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$/;
 
+// The classification schemes a Genre value may take its term from. TS 103 770 V1.2.1 clause 5.3.5,
+// table 12, row Genre: "Similar to ServiceGenre, possible values are taken from:" ContentCS and
+// FormatCS "defined in ETSI TS 102 822-3-1 [7]" and "ContentSubject defined in clause D.5". The
+// URIs are those of clause 6.11.5: "All values from the TV-Anytime ContentCS
+// (urn:tva:metadata:cs:ContentCS:2011) or FormatCS (urn:tva:metadata:cs:FormatCS:2011)", and the
+// uri attribute of the clause D.5 scheme, urn:dvb:metadata:cs:ContentSubject:2019. Each maps to
+// the file that holds it: DVBContentSubjectCS-2019.xml is the name annex B gives the clause D.5
+// attachment; ContentCS.xml and FormatCS.xml are the names in the TV-Anytime distribution.
+const GENRE_SCHEMES = {
+  'urn:tva:metadata:cs:ContentCS:2011': 'ContentCS.xml',
+  'urn:tva:metadata:cs:FormatCS:2011': 'FormatCS.xml',
+  'urn:dvb:metadata:cs:ContentSubject:2019': 'DVBContentSubjectCS-2019.xml',
+};
+// A Genre query value is read as a term reference: scheme URI, ":", termID, the form TS 103 770
+// writes every classification scheme term in (for example Genre href=
+// "urn:dvb:metadata:cs:ContentSubject:2019:2" in its examples). This is a reading: clause 5.1.3.2
+// does not define the value form, and the formal rule for term references is in ISO/IEC 15938-5,
+// which is not held here. termID is an NMTOKEN (tva_mpeg7.xsd, TermDefinitionBaseType); the
+// pattern below approximates NMTOKEN with Unicode letters, marks and digits plus . - _ : and U+00B7.
+const TERM_ID = /^[\p{L}\p{M}\p{N}._:·-]+$/u;
+function parseGenre(v) {
+  for (const uri of Object.keys(GENRE_SCHEMES)) {
+    if (v.startsWith(`${uri}:`)) {
+      const termID = v.slice(uri.length + 1);
+      return TERM_ID.test(termID) ? { uri, termID } : null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Load the terms of the Genre schemes from `dir`: a Map from scheme URI to its set of termIDs.
+ * Throws when a file is missing or unreadable, when its ClassificationScheme@uri is not the scheme
+ * it is named for, or when it defines no terms, so a registry asked to check terms never starts
+ * without them. The scheme files are not part of this repository.
+ */
+function loadGenreSchemes(dir) {
+  const terms = new Map();
+  for (const [uri, file] of Object.entries(GENRE_SCHEMES)) {
+    const p = path.join(dir, file);
+    let xml;
+    try { xml = fs.readFileSync(p, 'utf8'); }
+    catch (e) { throw new Error(`Genre classification scheme ${uri} not loaded from ${p}: ${e.message}`); }
+    xml = xml.replace(/<!--[\s\S]*?-->/g, '');
+    const root = xml.match(/<(?:[\w.-]+:)?ClassificationScheme\b[^>]*?\suri\s*=\s*(["'])(.*?)\1/);
+    if (!root || root[2] !== uri) {
+      throw new Error(`${p} is not the classification scheme ${uri} (found ${root ? root[2] : 'no ClassificationScheme@uri'})`);
+    }
+    // termID is an NMTOKEN with whiteSpace collapse, so surrounding spaces are not part of it
+    // (FormatCS.xml writes termID="2.1.1 ").
+    const ids = new Set([...xml.matchAll(/<(?:[\w.-]+:)?Term\b[^>]*?\stermID\s*=\s*(["'])(.*?)\1/g)].map(m => m[2].trim()));
+    if (!ids.size) throw new Error(`${p} defines no terms for ${uri}`);
+    terms.set(uri, ids);
+  }
+  return terms;
+}
+
+// The loaded Genre terms, or null when GENRE_CS_DIR is not set and only the value form is checked.
+let genreTerms = null;
+
 const xe = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
@@ -198,6 +258,17 @@ function validate(query) {
     // conform to the pattern [a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*".
     if (!LANGUAGE.test(l)) {
       return { status: 400, message: `Invalid Language "${l}": expected a language tag such as "en" or "de-CH".` };
+    }
+  }
+  for (const g of values(query, 'Genre')) {
+    // Table 12, row Genre names the schemes; with their files loaded the term has to be one of
+    // theirs, without them only the form is checked (see parseGenre).
+    const ref = parseGenre(g);
+    if (!ref) {
+      return { status: 400, message: `Invalid Genre "${g}": expected a term of ${Object.keys(GENRE_SCHEMES).join(', ')}, written as the scheme URI, ":", the termID.` };
+    }
+    if (genreTerms && !genreTerms.get(ref.uri).has(ref.termID)) {
+      return { status: 400, message: `Invalid Genre "${g}": ${ref.uri} has no term "${ref.termID}".` };
     }
   }
   for (const d of values(query, 'Delivery')) {
@@ -402,6 +473,16 @@ function checkTlsVersions(min = tls.DEFAULT_MIN_VERSION, max = tls.DEFAULT_MAX_V
  * HTTP may be used without TLS." Plain HTTP is for that case only; the server does not check it.
  */
 function startServer({ port = PORT, env = process.env } = {}) {
+  // Genre terms are checked only against scheme files the operator supplies; a directory that is
+  // set but does not hold them stops the server rather than leaving terms unchecked.
+  if (env.GENRE_CS_DIR) {
+    genreTerms = loadGenreSchemes(env.GENRE_CS_DIR);
+    log('info', 'Genre classification schemes loaded', { dir: env.GENRE_CS_DIR,
+      terms: Object.fromEntries([...genreTerms].map(([uri, ids]) => [uri, ids.size])) });
+  } else {
+    genreTerms = null;
+    log('warn', 'GENRE_CS_DIR not set: Genre query values are checked for form only, their terms are not checked');
+  }
   const keyPath = env.HTTPS_KEY_PATH, certPath = env.HTTPS_CERT_PATH;
   if (!keyPath && !certPath) {
     log('warn', 'serving plain HTTP: TS 103 770 clause 7.3 allows this only to clients on the same private subnet; set HTTPS_KEY_PATH and HTTPS_CERT_PATH for TLS');
@@ -431,4 +512,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { app, startServer, checkTlsVersions, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY };
+module.exports = { app, startServer, checkTlsVersions, buildEntryPoints, validate, matches, values, loadGenreSchemes, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY, GENRE_SCHEMES };

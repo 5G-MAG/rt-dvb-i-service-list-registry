@@ -331,3 +331,95 @@ test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported',
     fs.rmSync(pki.dir, { recursive: true, force: true });
   }
 });
+
+// Genre values (TS 103 770 V1.2.1 clause 5.3.5, table 12, row Genre) are terms of ContentCS,
+// FormatCS or the clause D.5 ContentSubject scheme, written as the scheme URI, ":", the termID.
+// The scheme files are not in this repository: the cases that need them read GENRE_CS_DIR and skip
+// without it, as the XSD check does without DVBI_SCHEMAS.
+const { loadGenreSchemes, GENRE_SCHEMES } = require('../server.js');
+const GENRE_DIR = process.env.GENRE_CS_DIR;
+const genreFilesHeld = Boolean(GENRE_DIR) &&
+  Object.values(GENRE_SCHEMES).every(f => fs.existsSync(path.join(GENRE_DIR, f)));
+const noGenreFiles = genreFilesHeld ? false : 'GENRE_CS_DIR not set or without the scheme files';
+
+async function queryStatuses(env, queries) {
+  const server = startServer({ port: 0, env });
+  await new Promise(r => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}/query?`;
+  try {
+    const out = {};
+    for (const q of queries) out[q] = (await fetch(base + q)).status;
+    return out;
+  } finally {
+    server.close();
+  }
+}
+const enc = v => `Genre=${encodeURIComponent(v)}`;
+const MALFORMED = ['Drama', '3.1', 'urn:tva:metadata:cs:ContentCS:2011', 'urn:tva:metadata:cs:ContentCS:2011:',
+  'urn:tva:metadata:cs:ContentCS:2011:3 .1', 'urn:tva:metadata:cs:ContentCS:2011/3.1',
+  'urn:tva:metadata:cs:AudioPurposeCS:2007:6', 'URN:TVA:METADATA:CS:CONTENTCS:2011:3.1'];
+
+test('a malformed Genre value, or a term of another scheme, is refused with 400', () => {
+  for (const g of MALFORMED) {
+    assert.equal(validate({ Genre: g })?.status, 400, `Genre "${g}"`);
+    assert.equal(validate({ 'Genre[]': ['urn:tva:metadata:cs:ContentCS:2011:3.1', g] })?.status, 400, `Genre[] "${g}"`);
+  }
+});
+
+test('without GENRE_CS_DIR, Genre values are checked for form only', async () => {
+  const unknown = 'urn:tva:metadata:cs:ContentCS:2011:9.9.9';
+  const s = await queryStatuses({}, [enc('urn:dvb:metadata:cs:ContentSubject:2019:1'), enc(unknown), enc('Drama')]);
+  assert.equal(s[enc('urn:dvb:metadata:cs:ContentSubject:2019:1')], 200);
+  assert.equal(s[enc(unknown)], 200, 'the term is not checked when no scheme file is loaded');
+  assert.equal(s[enc('Drama')], 400);
+});
+
+test('with GENRE_CS_DIR, a term the schemes define is accepted and any other is refused with 400',
+  { skip: noGenreFiles }, async () => {
+    const valid = ['urn:tva:metadata:cs:ContentCS:2011:3.1', 'urn:tva:metadata:cs:ContentCS:2011:3.1.1.1',
+      'urn:tva:metadata:cs:FormatCS:2011:2.1', 'urn:tva:metadata:cs:FormatCS:2011:2.1.1',
+      'urn:dvb:metadata:cs:ContentSubject:2019:1.0', 'urn:dvb:metadata:cs:ContentSubject:2019:4'];
+    const unknown = ['urn:tva:metadata:cs:ContentCS:2011:9.9.9', 'urn:tva:metadata:cs:FormatCS:2011:3.1',
+      'urn:dvb:metadata:cs:ContentSubject:2019:99'];
+    const queries = [...valid, ...unknown, ...MALFORMED].map(enc);
+    queries.push(`Genre%5B%5D=${encodeURIComponent(valid[0])}&Genre%5B%5D=${encodeURIComponent(unknown[0])}`);
+    const s = await queryStatuses({ GENRE_CS_DIR: GENRE_DIR }, queries);
+    for (const g of valid) assert.equal(s[enc(g)], 200, `Genre "${g}"`);
+    for (const g of [...unknown, ...MALFORMED]) assert.equal(s[enc(g)], 400, `Genre "${g}"`);
+    assert.equal(s[queries.at(-1)], 400, 'one unknown term among several is refused');
+
+    const terms = loadGenreSchemes(GENRE_DIR);
+    assert.deepEqual([...terms.keys()], Object.keys(GENRE_SCHEMES));
+    for (const ids of terms.values()) assert.ok(ids.size > 0);
+  });
+
+test('a GENRE_CS_DIR missing a scheme file, or holding the wrong scheme, stops the server', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-genre-'));
+  const scheme = (uri, id) => `<?xml version="1.0"?>\n<ClassificationScheme uri="${uri}"><Term termID="${id}"/></ClassificationScheme>\n`;
+  try {
+    fs.writeFileSync(path.join(dir, 'ContentCS.xml'), scheme('urn:tva:metadata:cs:ContentCS:2011', '3.1'));
+    fs.writeFileSync(path.join(dir, 'FormatCS.xml'), scheme('urn:tva:metadata:cs:FormatCS:2011', '2.1'));
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /DVBContentSubjectCS-2019\.xml/);
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: path.join(dir, 'absent') } }), /ENOENT/);
+
+    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), scheme('urn:tva:metadata:cs:ContentCS:2011', '1'));
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /is not the classification scheme urn:dvb:metadata:cs:ContentSubject:2019/);
+    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), '<ClassificationScheme uri="urn:dvb:metadata:cs:ContentSubject:2019"/>');
+    assert.throws(() => startServer({ port: 0, env: { GENRE_CS_DIR: dir } }), /defines no terms/);
+
+    // Started as a program, it exits non-zero instead of listening.
+    fs.rmSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'));
+    const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+      env: { ...process.env, PORT: '0', GENRE_CS_DIR: dir, LOG_LEVEL: 'error' },
+      encoding: 'utf8', timeout: 10000 });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /not started.*DVBContentSubjectCS-2019\.xml/);
+
+    // With all three present and well formed, it starts and checks against them.
+    fs.writeFileSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'), scheme('urn:dvb:metadata:cs:ContentSubject:2019', '1'));
+    const terms = loadGenreSchemes(dir);
+    assert.ok(terms.get('urn:dvb:metadata:cs:ContentSubject:2019').has('1'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
