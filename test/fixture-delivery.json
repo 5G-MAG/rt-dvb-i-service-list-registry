@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "A registry used only by the tests of DeliveryType content. DVBCDelivery, DVBSDelivery and",
+    "ApplicationDelivery have mandatory content (TS 103 770 clause 5.3.6, tables 12f to 12i), taken",
+    "from deliveryParameters. 'Complete' has valid values for all three; 'Undeclared' declares the",
+    "three deliveries with no parameters; 'Invalid' gives values outside the schema types. Only",
+    "'Complete' may emit the three elements or match a Delivery query for them."
+  ],
+  "registry": { "name": "Test Registry" },
+  "providers": [
+    {
+      "name": "Provider",
+      "offerings": [
+        {
+          "id": "tag:example.com,2026:list:complete",
+          "name": "Complete",
+          "uris": ["https://complete.example.com/service-list.xml"],
+          "delivery": ["dash", "dvb-c", "dvb-s", "application"],
+          "deliveryParameters": {
+            "dvb-c": [{ "networkID": 4369 }, { "networkID": 0 }],
+            "dvb-s": [{ "orbitalPositions": [19.2, -0.8] }, { "orbitalPositions": [180] }],
+            "application": [
+              { "contentType": "application/vnd.dvb.ait+xml", "xmlAitApplicationType": "application/vnd.hbbtv.xhtml+xml" },
+              { "contentType": "text/html" }
+            ]
+          },
+          "countries": ["DEU"],
+          "regulator": true
+        },
+        {
+          "id": "tag:example.com,2026:list:undeclared",
+          "name": "Undeclared",
+          "uris": ["https://undeclared.example.com/service-list.xml"],
+          "delivery": ["dvb-c", "dvb-s", "application"],
+          "countries": ["DEU"],
+          "regulator": false
+        },
+        {
+          "id": "tag:example.com,2026:list:invalid",
+          "name": "Invalid",
+          "uris": ["https://invalid.example.com/service-list.xml"],
+          "delivery": ["dash", "dvb-c", "dvb-s", "application"],
+          "deliveryParameters": {
+            "dvb-c": [{ "networkID": 65536 }, { "networkID": "4369" }, {}],
+            "dvb-s": [{ "orbitalPositions": [180.5] }, { "orbitalPositions": [] }, { "orbitalPositions": ["19.2"] }],
+            "application": [
+              { "contentType": "application/vnd.dvb.ait+xml" },
+              { "contentType": "text" },
+              { "contentType": "text/html", "xmlAitApplicationType": "not a type" }
+            ]
+          },
+          "countries": ["DEU"]
+        }
+      ]
+    }
+  ]
+}

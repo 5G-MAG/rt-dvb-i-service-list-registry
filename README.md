@@ -133,6 +133,14 @@ stores this out of scope, so a file is as valid as a database and easier to read
 implementation. Each entry names the list, its URLs, the delivery types it offers, the countries
 and languages it targets, and whether it is a regulator's list.
 
+Three delivery types cannot be written without values the specification makes mandatory: the
+network ID of `DVBCDelivery`, the orbital positions of `DVBSDelivery`, and the application types of
+`ApplicationDelivery` (clause 5.3.6). An entry gives them in `deliveryParameters`; one declared
+without them is left out of the response, does not match a `Delivery` query for it, and is logged
+as a warning. A regulator's list is written with `regulatorListFlag="true"`, and every
+`ServiceListURI` is labelled `application/vnd.dvb.dvbisl+xml`, the media type a Service List is
+served with (clause 5.1.2).
+
 The response is a `ServiceListEntryPoints` document in `urn:dvb:metadata:servicelistdiscovery:2024`,
 per `dvbi_service_list_discovery_v1.6.xsd`. That schema ships in the electronic attachment archive
 accompanying TS 103 770 (annex B lists it).

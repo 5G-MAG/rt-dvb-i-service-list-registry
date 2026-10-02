@@ -38,6 +38,7 @@ const { buildEntryPoints } = require('../server.js');
 // client.
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-registry.json'), 'utf8'));
 const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'registry.json'), 'utf8'));
+const delivery = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-delivery.json'), 'utf8'));
 
 process.chdir(SCHEMAS);
 const xsd = libxml.parseXml(fs.readFileSync(SCHEMA, 'utf8'), { baseUrl: SCHEMA });
@@ -67,6 +68,11 @@ check('fixture, regulatorListFlag=true', buildEntryPoints(fixture, { regulatorLi
 check('fixture, Delivery[]=dvb-dash&Delivery[]=dvb-t', buildEntryPoints(fixture, { 'Delivery[]': ['dvb-dash', 'dvb-t'] }));
 // A query matching nothing still has to produce a valid document: ProviderOffering is minOccurs=0.
 check('fixture, no matches', buildEntryPoints(fixture, { TargetCountry: 'ZWE' }));
+// DVBCDelivery, DVBSDelivery and ApplicationDelivery with their mandatory content, and the
+// offerings whose values are absent or outside the schema types.
+check('delivery fixture, no query parameters', buildEntryPoints(delivery, {}));
+check('delivery fixture, Delivery[]=application&Delivery[]=dvb-c&Delivery[]=dvb-s',
+  buildEntryPoints(delivery, { 'Delivery[]': ['application', 'dvb-c', 'dvb-s'] }));
 // And what this registry actually serves.
 check('registry.json as shipped', buildEntryPoints(registry, {}));
 console.log(`\n==== ${failures === 0 ? 'ALL VALID' : failures + ' FAILURE(S)'} ====`);

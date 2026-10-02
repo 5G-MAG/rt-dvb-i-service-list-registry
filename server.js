@@ -66,6 +66,79 @@ const DELIVERY_QUERY = {
   'application': ['application'],
 };
 
+// TS 103 770 V1.2.1 clause 5.1.2: "A Service List shall be made available using HTTP according
+// to clause 7.3 at a Service List URL, using the Media Type (MIME type)
+// application/vnd.dvb.dvbisl+xml." ServiceListURI@contentType is "The MIME type of the object
+// identified by the URI." (clause 5.5.9, table 22).
+const SERVICE_LIST_MEDIA_TYPE = 'application/vnd.dvb.dvbisl+xml';
+
+// mpeg7:mimeType (tva_mpeg7.xsd): type "/" subtype, each one or more characters from 0x21 to
+// 0x7F other than ( ) < > @ , ; : \ " / [ ] ? =
+const MIME_TOKEN = '[!#-\'*+\\-.0-9A-Z^-\\x7f]+';
+const MIME_TYPE = new RegExp(`^${MIME_TOKEN}/${MIME_TOKEN}$`);
+// dvbi-types:NetworkIdType is unsignedShort; dvbi-types:LongitudeType is a double from -180.0 to
+// 180.0 (dvbi_types_v1.0.xsd).
+const isNetworkId = v => Number.isInteger(v) && v >= 0 && v <= 65535;
+const isLongitude = v => typeof v === 'number' && Number.isFinite(v) && v >= -180 && v <= 180;
+
+/**
+ * The DeliveryType children an offering yields, in schema order, as { key, xml } with the key from
+ * DELIVERY_ELEMENTS, plus a description of each declared delivery that could not be emitted.
+ *
+ * Three children have mandatory content (clause 5.3.6): DVBCDelivery@networkID (table 12f),
+ * DVBSDelivery/OrbitalPosition, 1 .. ∞ (table 12g), and ApplicationDelivery/ApplicationType,
+ * 1 .. ∞ (table 12h), whose @contentType is mandatory (table 12i). Their values come from the
+ * offering's deliveryParameters in registry.json. A declared delivery without valid values is not
+ * emitted, and so does not match a Delivery query for it either: table 12b names the DeliveryTypes
+ * "required in query response Service List Offerings".
+ */
+function deliveryElements(o, p = '') {
+  const declared = new Set((o.delivery || []).map(d => String(d).toLowerCase()));
+  const params = o.deliveryParameters || {};
+  const out = [];
+  const dropped = [];
+  for (const [key, el] of Object.entries(DELIVERY_ELEMENTS)) {
+    if (!declared.has(key)) continue;
+    if (key === 'dvb-c') {
+      const entries = [].concat(params['dvb-c'] || []);
+      for (const e of entries) {
+        if (isNetworkId(e && e.networkID)) out.push({ key, xml: `${p}<dvbisd-t:${el} networkID="${e.networkID}"/>` });
+        else dropped.push(`dvb-c entry without a valid networkID (0 to 65535): ${JSON.stringify(e)}`);
+      }
+      if (!entries.length) dropped.push('dvb-c declared without deliveryParameters["dvb-c"]');
+    } else if (key === 'dvb-s') {
+      const entries = [].concat(params['dvb-s'] || []);
+      for (const e of entries) {
+        const positions = [].concat((e && e.orbitalPositions) || []);
+        if (positions.length && positions.every(isLongitude)) {
+          out.push({ key, xml: [`${p}<dvbisd-t:${el}>`,
+            ...positions.map(v => `${p}  <dvbisd-t:OrbitalPosition>${v}</dvbisd-t:OrbitalPosition>`),
+            `${p}</dvbisd-t:${el}>`].join('\n') });
+        } else dropped.push(`dvb-s entry without valid orbitalPositions (-180 to 180): ${JSON.stringify(e)}`);
+      }
+      if (!entries.length) dropped.push('dvb-s declared without deliveryParameters["dvb-s"]');
+    } else if (key === 'application') {
+      const entries = [].concat(params.application || []);
+      const types = [];
+      for (const e of entries) {
+        const ct = e && e.contentType;
+        const ait = e && e.xmlAitApplicationType;
+        // Table 12h: "If @contentType="application/vnd.dvb.ait+xml", the @xmlAitApplicationType
+        // attribute shall be included".
+        const aitOk = ct !== 'application/vnd.dvb.ait+xml' ? (ait === undefined || MIME_TYPE.test(ait)) : MIME_TYPE.test(ait || '');
+        if (typeof ct === 'string' && MIME_TYPE.test(ct) && aitOk) {
+          types.push(`${p}  <dvbisd-t:ApplicationType contentType="${xe(ct)}"${ait !== undefined ? ` xmlAitApplicationType="${xe(ait)}"` : ''}/>`);
+        } else dropped.push(`application entry without a valid contentType or xmlAitApplicationType: ${JSON.stringify(e)}`);
+      }
+      if (types.length) out.push({ key, xml: [`${p}<dvbisd-t:${el}>`, ...types, `${p}</dvbisd-t:${el}>`].join('\n') });
+      else if (!entries.length) dropped.push('application declared without deliveryParameters.application');
+    } else {
+      out.push({ key, xml: `${p}<dvbisd-t:${el}/>` });
+    }
+  }
+  return { elements: out, dropped };
+}
+
 // TS 103 770 clause 5.1.3.2: "The maximum length of a fully qualified web service URL including
 // shall not exceed 2 048 characters."
 const MAX_URL = 2048;
@@ -157,8 +230,8 @@ function matches(offering, query) {
   if (countries.length && offeredCountries.length && !countries.some(c => offeredCountries.includes(c))) return false;
 
   const delivery = values(query, 'Delivery').map(s => s.toLowerCase());
-  const declaredDelivery = (offering.delivery || []).map(s => s.toLowerCase());
-  if (delivery.length && !delivery.some(d => (DELIVERY_QUERY[d] || []).some(e => declaredDelivery.includes(e)))) return false;
+  const emittedDelivery = deliveryElements(offering).elements.map(e => e.key);
+  if (delivery.length && !delivery.some(d => (DELIVERY_QUERY[d] || []).some(e => emittedDelivery.includes(e)))) return false;
 
   const languages = values(query, 'Language').map(s => s.toLowerCase());
   const offeredLanguages = offering.languages || [];
@@ -186,18 +259,18 @@ function offeringXml(o, indent) {
   // the servicediscovery-types namespace rather than the discovery one. Emitting them unprefixed
   // put them in the wrong namespace and the schema rejected them.
   const names = [].concat(o.name).map(n => `${p}  <dvbisd-t:ServiceListName>${xe(n)}</dvbisd-t:ServiceListName>`).join('\n');
-  const uris = (o.uris || []).map(u => `${p}  <dvbisd-t:ServiceListURI contentType="application/xml">\n${p}    <dvbisd-t:URI>${xe(u)}</dvbisd-t:URI>\n${p}  </dvbisd-t:ServiceListURI>`).join('\n');
+  const uris = (o.uris || []).map(u => `${p}  <dvbisd-t:ServiceListURI contentType="${SERVICE_LIST_MEDIA_TYPE}">\n${p}    <dvbisd-t:URI>${xe(u)}</dvbisd-t:URI>\n${p}  </dvbisd-t:ServiceListURI>`).join('\n');
   // DeliveryType's children are a fixed sequence, so they are emitted in schema order rather than
   // in whatever order the registry file happens to list them.
-  const declared = new Set((o.delivery || []).map(d => d.toLowerCase()));
-  const delivery = Object.entries(DELIVERY_ELEMENTS)
-    .filter(([k]) => declared.has(k))
-    .map(([, el]) => `${p}    <dvbisd-t:${el}/>`)
-    .join('\n');
+  const { elements, dropped } = deliveryElements(o, `${p}    `);
+  for (const reason of dropped) log('warn', 'delivery not emitted', { offering: o.id, reason });
+  const delivery = elements.map(e => e.xml).join('\n');
   const languages = (o.languages || []).map(l => `${p}  <dvbisd-t:Language>${xe(l)}</dvbisd-t:Language>`).join('\n');
   const countries = (o.countries || []).map(c => `${p}  <dvbisd-t:TargetCountry>${xe(c)}</dvbisd-t:TargetCountry>`).join('\n');
   return [
-    `${p}<ServiceListOffering>`,
+    // Table 12, row @regulatorListFlag: "If not specified the default value is false", so a
+    // regulator's list has to say true.
+    `${p}<ServiceListOffering${o.regulator ? ' regulatorListFlag="true"' : ''}>`,
     names,
     uris,
     `${p}  <dvbisd-t:Delivery>`,

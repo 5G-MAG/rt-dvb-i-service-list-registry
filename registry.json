@@ -10,7 +10,15 @@
     "           multicast-ts, application. A query carries the table 12b values instead (dvb-dash,",
     "           dvb-t, dvb-c, dvb-s, dvb-iptv, application) and the server maps between the two.",
     "regulator  true if this list is the one published by a national regulator, matched by the",
-    "           regulatorListFlag query parameter."
+    "           regulatorListFlag query parameter and written as regulatorListFlag=\"true\".",
+    "deliveryParameters",
+    "           the values three DeliveryType children cannot be emitted without (clause 5.3.6):",
+    "           \"dvb-c\": [{ \"networkID\": 0 to 65535 }], one DVBCDelivery per entry;",
+    "           \"dvb-s\": [{ \"orbitalPositions\": [-180 to 180, ...] }], one DVBSDelivery per entry;",
+    "           \"application\": [{ \"contentType\": MIME type, \"xmlAitApplicationType\": MIME type }],",
+    "           the ApplicationTypes of ApplicationDelivery; xmlAitApplicationType is required when",
+    "           contentType is application/vnd.dvb.ait+xml. A delivery declared without valid values",
+    "           here is not emitted, does not match a Delivery query, and is logged as a warning."
   ],
   "registry": {
     "name": "5G-MAG Reference Service List Registry",
@@ -38,7 +46,8 @@
             "DEU",
             "ESP"
           ],
-          "regulator": false
+          "regulator": false,
+          "deliveryParameters": {}
         }
       ]
     }

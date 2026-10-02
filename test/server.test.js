@@ -13,7 +13,7 @@ const { app, buildEntryPoints, validate, values, PARAMETERS } = require('../serv
 // be edited, so asserting on its contents makes every edit a test failure and lets coverage shrink
 // whenever an entry is removed.
 const registry = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-registry.json'), 'utf8'));
-const count = xml => (xml.match(/<ServiceListOffering>/g) || []).length;
+const count = xml => (xml.match(/<ServiceListOffering[ >]/g) || []).length;
 
 test('the accepted parameters are those the clause lists, in its order', () => {
   assert.deepEqual(PARAMETERS, ['TargetCountry', 'regulatorListFlag', 'Delivery', 'Language',
@@ -172,6 +172,53 @@ test('an over-long request URL is refused', async () => {
   } finally {
     server.close();
   }
+});
+
+const deliveryFixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture-delivery.json'), 'utf8'));
+const offeringBlock = (xml, name) => xml.split(/(?=<ServiceListOffering[ >])/)
+  .find(b => b.includes(`<dvbisd-t:ServiceListName>${name}</dvbisd-t:ServiceListName>`));
+
+// A Service List is served as application/vnd.dvb.dvbisl+xml (clause 5.1.2), and
+// ServiceListURI@contentType is the MIME type of the object the URI identifies (table 22).
+test('every ServiceListURI carries the service list media type', () => {
+  const xml = buildEntryPoints(registry, {});
+  const types = [...xml.matchAll(/<dvbisd-t:ServiceListURI contentType="([^"]*)">/g)].map(m => m[1]);
+  assert.equal(types.length, 2);
+  assert.deepEqual([...new Set(types)], ['application/vnd.dvb.dvbisl+xml']);
+});
+
+// Table 12: @regulatorListFlag defaults to false, so a regulator's list has to state true.
+test('a regulator list carries regulatorListFlag="true" and any other list leaves the default', () => {
+  const xml = buildEntryPoints(registry, {});
+  assert.match(offeringBlock(xml, 'List Two'), /^<ServiceListOffering regulatorListFlag="true">/);
+  assert.match(offeringBlock(xml, 'List One'), /^<ServiceListOffering>/);
+  assert.match(offeringBlock(buildEntryPoints(registry, { regulatorListFlag: 'true' }), 'List Two'),
+    /regulatorListFlag="true"/);
+});
+
+// DVBCDelivery@networkID (table 12f), DVBSDelivery/OrbitalPosition (table 12g) and
+// ApplicationDelivery/ApplicationType with @contentType (tables 12h, 12i) are mandatory, so these
+// elements are emitted with their values or not at all.
+test('DVBCDelivery, DVBSDelivery and ApplicationDelivery are emitted complete or not at all', () => {
+  const xml = buildEntryPoints(deliveryFixture, {});
+  const complete = offeringBlock(xml, 'Complete');
+  assert.match(complete, /<dvbisd-t:DVBCDelivery networkID="4369"\/>/);
+  assert.match(complete, /<dvbisd-t:DVBCDelivery networkID="0"\/>/);
+  assert.match(complete, /<dvbisd-t:DVBSDelivery>\s*<dvbisd-t:OrbitalPosition>19.2<\/dvbisd-t:OrbitalPosition>\s*<dvbisd-t:OrbitalPosition>-0.8<\/dvbisd-t:OrbitalPosition>\s*<\/dvbisd-t:DVBSDelivery>/);
+  assert.match(complete, /<dvbisd-t:DVBSDelivery>\s*<dvbisd-t:OrbitalPosition>180<\/dvbisd-t:OrbitalPosition>\s*<\/dvbisd-t:DVBSDelivery>/);
+  assert.match(complete, /<dvbisd-t:ApplicationDelivery>\s*<dvbisd-t:ApplicationType contentType="application\/vnd.dvb.ait\+xml" xmlAitApplicationType="application\/vnd.hbbtv.xhtml\+xml"\/>\s*<dvbisd-t:ApplicationType contentType="text\/html"\/>\s*<\/dvbisd-t:ApplicationDelivery>/);
+
+  for (const name of ['Undeclared', 'Invalid']) {
+    assert.doesNotMatch(offeringBlock(xml, name), /DVBCDelivery|DVBSDelivery|ApplicationDelivery|ApplicationType/, name);
+  }
+  assert.match(offeringBlock(xml, 'Invalid'), /<dvbisd-t:DASHDelivery\/>/, 'deliveries without mandatory content are still emitted');
+
+  // Table 12b names the DeliveryTypes "required in query response Service List Offerings", so an
+  // offering whose element could not be emitted does not match a query for it.
+  const names = q => [...buildEntryPoints(deliveryFixture, q).matchAll(/<dvbisd-t:ServiceListName>([^<]*)</g)].map(m => m[1]);
+  assert.deepEqual(names({ Delivery: 'dvb-c' }), ['Complete']);
+  assert.deepEqual(names({ Delivery: 'dvb-s' }), ['Complete']);
+  assert.deepEqual(names({ Delivery: 'application' }), ['Complete']);
 });
 
 // Table 12b is a closed set with no value for 5G delivery, so a client asking for one gets the 400 any
