@@ -10,11 +10,7 @@
     "           multicast-ts, application. A query carries the table 12b values instead (dvb-dash,",
     "           dvb-t, dvb-c, dvb-s, dvb-iptv, application) and the server maps between the two.",
     "regulator  true if this list is the one published by a national regulator, matched by the",
-    "           regulatorListFlag query parameter.",
-    "extensions LOCAL extensions this offering relies on, not defined by DVB. Only \"5g-mbms\" is",
-    "           understood: it says the service list is also carried over 5G broadcast, and makes",
-    "           the query response emit an OtherDeliveryParameters element saying so. It is not a",
-    "           Delivery query value, because that set is closed."
+    "           regulatorListFlag query parameter."
   ],
   "registry": {
     "name": "5G-MAG Reference Service List Registry",
@@ -42,8 +38,7 @@
             "DEU",
             "ESP"
           ],
-          "regulator": false,
-          "extensions": []
+          "regulator": false
         }
       ]
     }

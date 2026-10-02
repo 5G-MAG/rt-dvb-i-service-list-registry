@@ -66,18 +66,6 @@ const DELIVERY_QUERY = {
   'application': ['application'],
 };
 
-// A LOCAL EXTENSION, not DVB-specified. DeliveryType has no MBMS child, so an offering whose
-// service list is also carried over 5G broadcast says so through the extension point the type does
-// provide: OtherDeliveryParameters, typed dvbi-types:ExtensionBaseType, with an xsi:type from
-// another namespace. The schema for that type lives with the provider that defines the extension
-// (rt-dvb-i-application-provider/schemas/dvbi-5g-ext-1.0.xsd); see EXTENSIONS in README.md.
-//
-// This is deliberately NOT a Delivery query value: table 12b is a closed set, so accepting a
-// seventh value would make the query interface non-conformant. It is emitted and displayed only.
-const EXT_5G = '5g-mbms';
-const NS_DVBI_5G = 'urn:5g-mag:metadata:dvbi-5g:2026';
-const EXT_5G_NAME = 'urn:5g-mag:dvbi-5g:mbms';
-
 // TS 103 770 clause 5.1.3.2: "The maximum length of a fully qualified web service URL including
 // shall not exceed 2 048 characters."
 const MAX_URL = 2048;
@@ -180,10 +168,6 @@ function offeringXml(o, indent) {
     .filter(([k]) => declared.has(k))
     .map(([, el]) => `${p}    <dvbisd-t:${el}/>`)
     .join('\n');
-  // OtherDeliveryParameters is last in DeliveryType's sequence, so the extension goes after them.
-  const ext5g = (o.extensions || []).includes(EXT_5G)
-    ? `${p}    <!-- Local extension, not DVB-specified -->\n${p}    <dvbisd-t:OtherDeliveryParameters extensionName="${EXT_5G_NAME}" xsi:type="dvbi5g:MBMSOfferingType"/>`
-    : '';
   const languages = (o.languages || []).map(l => `${p}  <dvbisd-t:Language>${xe(l)}</dvbisd-t:Language>`).join('\n');
   const countries = (o.countries || []).map(c => `${p}  <dvbisd-t:TargetCountry>${xe(c)}</dvbisd-t:TargetCountry>`).join('\n');
   return [
@@ -192,7 +176,6 @@ function offeringXml(o, indent) {
     uris,
     `${p}  <dvbisd-t:Delivery>`,
     delivery,
-    ext5g,
     `${p}  </dvbisd-t:Delivery>`,
     languages,
     countries,
@@ -222,12 +205,6 @@ function buildEntryPoints(registry, query) {
       offerings.map(o => offeringXml(o, 4)).join('\n') + '\n' +
       `  </ProviderOffering>`);
   }
-  // Declared only when something in the document uses it, so a reader can tell from the namespace
-  // declarations alone whether this response relies on the local extension.
-  const uses5g = providers.some(x => x.includes(EXT_5G_NAME));
-  const ns5g = uses5g
-    ? `\n  xmlns:dvbi5g="${NS_DVBI_5G}"\n  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"`
-    : '';
   // xml:lang is required on ServiceListEntryPointsType: it states the language of the human-readable
   // names in the document, and the schema will not accept the element without it.
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -236,7 +213,7 @@ function buildEntryPoints(registry, query) {
   xmlns="${NS}"
   xmlns:dvbisd-t="${NS_TYPES}"
   xmlns:mpeg7="${NS_MPEG7}"
-  xmlns:tva="${NS_TVA}"${ns5g}>
+  xmlns:tva="${NS_TVA}">
   <ServiceListRegistryEntity>
 ${organization(registry.registry.name, 4)}
   </ServiceListRegistryEntity>
@@ -290,7 +267,6 @@ app.get('/api/offerings', (req, res) => {
       offerings: (p.offerings || []).map(o => ({
         id: o.id, name: o.name, uris: o.uris || [], delivery: o.delivery || [],
         languages: o.languages || [], countries: o.countries || [], regulator: Boolean(o.regulator),
-        extensions: o.extensions || [],
       })),
     })),
   });
@@ -309,4 +285,4 @@ function startServer() {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY, EXT_5G };
+module.exports = { app, startServer, buildEntryPoints, validate, matches, values, PARAMETERS, DELIVERY_ELEMENTS, DELIVERY_QUERY };

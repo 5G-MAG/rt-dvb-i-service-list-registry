@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, buildEntryPoints, validate, values, PARAMETERS, EXT_5G } = require('../server.js');
+const { app, buildEntryPoints, validate, values, PARAMETERS } = require('../server.js');
 
 // Tests read a fixture, not the shipped registry.json: that file is operator data and is meant to
 // be edited, so asserting on its contents makes every edit a test failure and lets coverage shrink
@@ -119,29 +119,10 @@ test('an over-long request URL is refused', async () => {
   }
 });
 
-// DeliveryType has no MBMS child, so an offering also carried over 5G broadcast says so through
-// OtherDeliveryParameters, the extension point that type does provide. Two things have to hold: the
-// response has to say plainly that this is a local extension, and an offering that does not use it
-// must be untouched, including the namespace declaration, so conformance stays readable.
-test('the local 5G extension is emitted, named, and confined to the offerings that use it', () => {
-  // Declared on a copy: the shared fixture stays free of it so the other cases, and the XSD check,
-  // exercise a response the published schema alone can validate.
-  const with5g = JSON.parse(JSON.stringify(registry));
-  with5g.providers[0].offerings[0].extensions = [EXT_5G];
-  const xml = buildEntryPoints(with5g, {});
-  assert.match(xml, /xmlns:dvbi5g="urn:5g-mag:metadata:dvbi-5g:2026"/);
-  assert.match(xml, /<!-- Local extension, not DVB-specified -->/);
-  assert.match(xml, /<dvbisd-t:OtherDeliveryParameters extensionName="urn:5g-mag:dvbi-5g:mbms" xsi:type="dvbi5g:MBMSOfferingType"\/>/);
-  assert.equal((xml.match(/OtherDeliveryParameters/g) || []).length, 1,
-    'only the one offering declaring it carries the extension');
-
-  // A registry where nothing uses it produces a document with no trace of it at all.
-  assert.doesNotMatch(buildEntryPoints(registry, {}), /dvbi-5g|OtherDeliveryParameters/);
-});
-
-// Table 12b is a closed set, so the extension must not leak into the query interface: a client
-// asking for it gets the 400 any other undefined value gets.
-test('the 5G extension is not a Delivery query value', () => {
-  assert.equal(validate({ Delivery: EXT_5G }).status, 400);
+// Table 12b is a closed set with no value for 5G delivery, so a client asking for one gets the 400 any
+// other undefined value gets, and no offering is marked as carried over 5G.
+test('no Delivery query value for 5G delivery, and no 5G marker in responses', () => {
+  assert.equal(validate({ Delivery: '5g-mbms' }).status, 400);
   assert.equal(validate({ Delivery: '5g' }).status, 400);
+  assert.doesNotMatch(buildEntryPoints(registry, {}), /dvbi-5g|OtherDeliveryParameters/);
 });

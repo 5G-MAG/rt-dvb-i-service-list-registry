@@ -78,10 +78,6 @@ Three environment variables:
 ```bash
 npm test                                                   # unit tests, XSD skips without schemas
 DVBI_SCHEMAS=~/.local/share/dvb-i-schemas/etsi npm test     # with conformance checking
-
-# also check the response that carries the local 5G extension
-DVBI_SCHEMAS=~/.local/share/dvb-i-schemas/etsi \
-DVBI_5G_EXT_SCHEMA=../rt-dvb-i-application-provider/schemas/dvbi-5g-ext-1.0.xsd npm test
 ```
 
 The unit tests follow the clause rather than this implementation: which parameters exist, how
@@ -141,31 +137,13 @@ If you extend it: `ServiceListOffering` is declared by the discovery schema but 
 rather than the discovery one. Emitting them unprefixed produces a document that looks right and
 fails validation.
 
-## The local 5G broadcast extension
+## 5G delivery
 
-An offering may declare `"extensions": ["5g-mbms"]`, meaning the service list is also carried over
-5G broadcast (MBMS). **Nothing in DVB defines this.** `DeliveryType` (TS 103 770 V1.2.1, clause
-5.3.6.1) has no MBMS child, so the marker rides the extension point that type does provide,
-`OtherDeliveryParameters`, with an `xsi:type` from the 5G-MAG namespace
-`urn:5g-mag:metadata:dvbi-5g:2026`:
-
-```xml
-<dvbisd-t:Delivery>
-  <dvbisd-t:DASHDelivery/>
-  <!-- Local extension, not DVB-specified -->
-  <dvbisd-t:OtherDeliveryParameters extensionName="urn:5g-mag:dvbi-5g:mbms"
-                                    xsi:type="dvbi5g:MBMSOfferingType"/>
-</dvbisd-t:Delivery>
-```
-
-The schema for that type is `schemas/dvbi-5g-ext-1.0.xsd` in the provider repository, which owns
-the extension. The namespace is declared only in responses that actually use it, so a reader can
-tell from the declarations alone whether a response relies on anything non-DVB. The dashboard
-shows it in its own Extensions column rather than merged into Delivery.
-
-It is deliberately **not** a `Delivery` query value. Table 12b is a closed set and an unlisted value
-gets a 400, so a seventh one would make the query interface non-conformant. The extension is
-emitted and displayed; it is not queryable.
+TS 103 770 V1.2.1 gives a registry no way to say that a service list is also carried over 5G
+Broadcast: `DeliveryType` (clause 5.3.6.1) has no MBMS child, and table 12b has no `Delivery` query
+value for it, so a query for one gets the 400 any undefined value gets. This registry adds nothing
+of its own for it. A service instance delivered over 5G Broadcast is signalled in the service list
+itself, as `IdentifierBasedDeliveryParameters` holding an `mbms://` locator; see the provider.
 
 ## Limitations
 
@@ -174,9 +152,8 @@ emitted and displayed; it is not queryable.
 - `Genre` and `inlineImages` are accepted and validated but do not change the response: no entry in
   the registry file carries genres, and images are never inlined.
 - Server-side region selection (clause 5.6.4) is not implemented; `SRSSupport` is not advertised.
-- The 5G broadcast marker above is a local extension, not conformance. A client that does not know
-  the namespace ignores it, which is the intended behaviour, but it will also learn nothing about
-  5G availability from this registry until DVB specifies a delivery type for it.
+- A client learns nothing about 5G delivery from this registry, since TS 103 770 defines no way to
+  say it (see above).
 
 ## Contributing
 
