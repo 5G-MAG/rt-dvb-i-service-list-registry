@@ -142,7 +142,7 @@ function deliveryElements(o, p = '') {
 }
 
 // TS 103 770 clause 5.1.3.2: "The maximum length of a fully qualified web service URL including
-// shall not exceed 2 048 characters."
+// parameters shall not exceed 2 048 characters."
 const MAX_URL = 2048;
 
 const ISO_3166_LIST = /^[A-Z]{3}(,[A-Z]{3})*$/;
