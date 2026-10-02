@@ -238,6 +238,14 @@ const https = require('node:https');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { startServer, checkTlsVersions } = require('../server.js');
 
+// Runs server.js as a program with exactly the variables in `env`. Nothing is inherited from the
+// caller's environment, so a variable set in the shell running the tests (GENRE_CS_DIR,
+// REGISTRY_PATH, NODE_OPTIONS, HTTPS_KEY_PATH) cannot change whether or why the child stops.
+function runServer(nodeArgs, env) {
+  return spawnSync(process.execPath, [...nodeArgs, path.join(__dirname, '..', 'server.js')],
+    { env, encoding: 'utf8', timeout: 10000 });
+}
+
 function makeCertificate() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-tls-'));
   const key = path.join(dir, 'key.pem'), cert = path.join(dir, 'cert.pem');
@@ -302,9 +310,7 @@ test('a TLS configuration that is incomplete or cannot be loaded stops the serve
     assert.throws(() => startServer({ port: 0, env: { HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert } }));
 
     // Started as a program, it exits non-zero instead of listening.
-    const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, PORT: '0', HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' },
-      encoding: 'utf8', timeout: 10000 });
+    const run = runServer([], { PORT: '0', HTTPS_KEY_PATH: bad, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /not started/);
   } finally {
@@ -322,9 +328,7 @@ test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported',
   // Node's own option for the minimum version reaches the check.
   const pki = makeCertificate();
   try {
-    const run = spawnSync(process.execPath, ['--tls-min-v1.3', path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, PORT: '0', HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' },
-      encoding: 'utf8', timeout: 10000 });
+    const run = runServer(['--tls-min-v1.3'], { PORT: '0', HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /exclude TLSv1.2/);
   } finally {
@@ -409,9 +413,7 @@ test('a GENRE_CS_DIR missing a scheme file, or holding the wrong scheme, stops t
 
     // Started as a program, it exits non-zero instead of listening.
     fs.rmSync(path.join(dir, 'DVBContentSubjectCS-2019.xml'));
-    const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, PORT: '0', GENRE_CS_DIR: dir, LOG_LEVEL: 'error' },
-      encoding: 'utf8', timeout: 10000 });
+    const run = runServer([], { PORT: '0', GENRE_CS_DIR: dir, LOG_LEVEL: 'error' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /not started.*DVBContentSubjectCS-2019\.xml/);
 
