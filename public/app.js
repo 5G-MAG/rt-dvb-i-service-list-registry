@@ -1,3 +1,12 @@
+/*
+License: 5G-MAG Public License (v1.0)
+Authors: Jordi J. Gimenez (5G-MAG)
+Copyright: (C) 2026 5G-MAG Association
+
+For full license terms please see the LICENSE file distributed with this
+program. If this file is missing then the license can be retrieved from
+https://www.5g-mag.com/license
+*/
 // Everything rendered here comes from the registry's own files, and is inserted as text rather than
 // markup: a registry entry is operator-supplied, and this page has no reason to let it become HTML.
 const el = id => document.getElementById(id);
