@@ -41,7 +41,7 @@ Registration is by editing `registry.json`.
 ```
 GET /query?TargetCountry=CHE
 GET /query?TargetCountry=ITA&regulatorListFlag=true
-GET /query?Delivery[]=dash&Delivery[]=dvb-t
+GET /query?Delivery[]=dvb-dash&Delivery[]=dvb-t
 GET /query?ProviderName=5G-MAG
 ```
 
