@@ -119,7 +119,10 @@ An offering that specifies no `TargetCountry`, no `Language` or no `Genre` is in
 for that parameter, as clause 5.1.3.2 and table 12 of clause 5.3.5 require.
 
 - A query naming an unknown parameter, or giving an invalid value, is refused with 400, as the
-  clause requires.
+  clause requires. `TargetCountry` takes upper-case three-letter codes, alone or comma separated
+  (`tva:ISO-3166-List`); `Language` takes a language tag such as `en` or `de-CH` (the XML Schema
+  `language` type); `Delivery` takes the values of table 12b; `regulatorListFlag` and
+  `inlineImages` take `true` or `false`.
 - A request URL over 2 048 characters is refused with 414. That is the limit the clause sets.
 - A query matching nothing returns a valid document with no offerings rather than an error.
 
@@ -151,8 +154,13 @@ itself, as `IdentifierBasedDeliveryParameters` holding an `mbms://` locator; see
 
 - Registration is by editing `registry.json`. The M interface of clause 4.1, by which a provider
   registers its own entry points, is not implemented.
-- `Genre` and `inlineImages` are accepted and validated but do not change the response: no entry in
-  the registry file carries genres, and images are never inlined.
+- `Genre` values are not validated, so an invalid one matches only offerings that specify no genre
+  instead of getting a 400. Clause 5.1.3.2 does not say what form a `Genre` query value takes, so
+  which values are invalid is not decided here.
+- `TargetCountry` and `Language` are checked against their schema types only: `ZZZ` and `xx` are
+  accepted, since the ISO 3166 code list and the language subtag registry are not checked.
+- `inlineImages` is accepted and validated but does not change the response: images are never
+  inlined.
 - Server-side region selection (clause 5.6.4) is not implemented; `SRSSupport` is not advertised.
 - A client learns nothing about 5G delivery from this registry, since TS 103 770 defines no way to
   say it (see above).

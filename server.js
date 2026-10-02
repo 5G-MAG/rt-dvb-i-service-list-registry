@@ -70,6 +70,9 @@ const DELIVERY_QUERY = {
 // shall not exceed 2 048 characters."
 const MAX_URL = 2048;
 
+const ISO_3166_LIST = /^[A-Z]{3}(,[A-Z]{3})*$/;
+const LANGUAGE = /^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$/;
+
 const xe = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
@@ -107,9 +110,19 @@ function validate(query) {
     }
   }
   for (const c of values(query, 'TargetCountry')) {
-    // tva:ISO-3166-List is three-letter alpha codes.
-    if (!/^[A-Za-z]{3}$/.test(c)) {
-      return { status: 400, message: `Invalid TargetCountry "${c}": expected a three-letter ISO 3166 code.` };
+    // TargetCountry is of type tva:ISO-3166-List (clause 5.3.5), whose pattern in
+    // tva_metadata_3-1.xsd is [A-Z]{3}(,[A-Z]{3})*: upper-case three-letter codes, comma separated.
+    if (!ISO_3166_LIST.test(c)) {
+      return { status: 400, message: `Invalid TargetCountry "${c}": expected upper-case three-letter ISO 3166 codes, comma separated.` };
+    }
+  }
+  for (const l of values(query, 'Language')) {
+    // Language is of type tva:AudioLanguageType (clause 5.3.5), an extension of
+    // mpeg7:ExtendedLanguageType, whose base is the XML Schema type language. XML Schema Part 2
+    // Second Edition clause 3.3.3: "The ·lexical space· of language is the set of all strings that
+    // conform to the pattern [a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*".
+    if (!LANGUAGE.test(l)) {
+      return { status: 400, message: `Invalid Language "${l}": expected a language tag such as "en" or "de-CH".` };
     }
   }
   for (const d of values(query, 'Delivery')) {
@@ -138,8 +151,9 @@ function validate(query) {
  * offering."
  */
 function matches(offering, query) {
-  const countries = values(query, 'TargetCountry').map(s => s.toUpperCase());
-  const offeredCountries = offering.countries || [];
+  // A TargetCountry value may list several codes, comma separated; each is an alternative.
+  const countries = values(query, 'TargetCountry').flatMap(s => s.split(','));
+  const offeredCountries = (offering.countries || []).flatMap(s => String(s).split(','));
   if (countries.length && offeredCountries.length && !countries.some(c => offeredCountries.includes(c))) return false;
 
   const delivery = values(query, 'Delivery').map(s => s.toLowerCase());

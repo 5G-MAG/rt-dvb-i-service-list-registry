@@ -33,6 +33,30 @@ test('an invalid value for a parameter is refused with 400', () => {
   assert.equal(validate({ inlineImages: '1' }).status, 400);
 });
 
+// TargetCountry is tva:ISO-3166-List, pattern [A-Z]{3}(,[A-Z]{3})*; Language is based on the XML
+// Schema type language, pattern [a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*. A value outside the type is
+// "an invalid value" and gets the 400 of clause 5.1.3.2.
+test('TargetCountry and Language values outside their schema types are refused with 400', () => {
+  for (const c of ['ita', 'Ita', 'IT', 'ITAL', 'ITA,', 'ITA;DEU', 'ITA, DEU']) {
+    assert.equal(validate({ TargetCountry: c })?.status, 400, `TargetCountry "${c}"`);
+    assert.equal(validate({ 'TargetCountry[]': ['DEU', c] })?.status, 400, `TargetCountry[] "${c}"`);
+  }
+  for (const c of ['ITA', 'ITA,DEU']) assert.equal(validate({ TargetCountry: c }), null, `TargetCountry "${c}"`);
+
+  for (const l of ['english!', 'en_GB', 'toolongtag', 'en-', '-en', 'en--GB', 'en-toolongsub', '1']) {
+    assert.equal(validate({ Language: l })?.status, 400, `Language "${l}"`);
+    assert.equal(validate({ 'Language[]': ['de', l] })?.status, 400, `Language[] "${l}"`);
+  }
+  for (const l of ['en', 'DE', 'de-CH', 'zh-Hant-TW', 'i-klingon', 'x-a1b2c3d4']) {
+    assert.equal(validate({ Language: l }), null, `Language "${l}"`);
+  }
+});
+
+test('a TargetCountry value listing several codes matches an offering for any of them', () => {
+  assert.equal(count(buildEntryPoints(registry, { TargetCountry: 'DEU,ITA' })), 2);
+  assert.equal(count(buildEntryPoints(registry, { TargetCountry: 'FRA,ITA' })), 1);
+});
+
 test('a valid query is accepted', () => {
   assert.equal(validate({}), null, 'no parameters at all is a valid query');
   assert.equal(validate({ TargetCountry: 'ITA', regulatorListFlag: 'true' }), null);
@@ -127,6 +151,9 @@ test('the endpoint answers over HTTP with the specified status codes', async () 
 
     assert.equal((await fetch(`${base}/query?Nonsense=1`)).status, 400);
     assert.equal((await fetch(`${base}/query?TargetCountry=Italy`)).status, 400);
+    assert.equal((await fetch(`${base}/query?TargetCountry=ita`)).status, 400);
+    assert.equal((await fetch(`${base}/query?Language=en_GB`)).status, 400);
+    assert.equal((await fetch(`${base}/query?TargetCountry=ITA&Language=it`)).status, 200);
     assert.equal((await fetch(`${base}/query`)).status, 200, 'a query with no parameters is allowed here');
   } finally {
     server.close();
