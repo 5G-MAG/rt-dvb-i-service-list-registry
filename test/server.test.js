@@ -245,7 +245,7 @@ const os = require('node:os');
 const tls = require('node:tls');
 const https = require('node:https');
 const { execFileSync, spawnSync } = require('node:child_process');
-const { startServer, checkTlsVersions } = require('../server.js');
+const { startServer } = require('../server.js');
 
 // Runs server.js as a program with exactly the variables in `env`. Nothing is inherited from the
 // caller's environment, so a variable set in the shell running the tests (GENRE_CS_DIR,
@@ -337,21 +337,125 @@ test('a TLS configuration that is incomplete or cannot be loaded stops the serve
   }
 });
 
-test('TLS versions that exclude 1.2 stop the server; excluding 1.3 is reported', () => {
-  assert.deepEqual(checkTlsVersions('TLSv1.2', 'TLSv1.3'), {});
-  assert.deepEqual(checkTlsVersions('TLSv1', 'TLSv1.3'), {});
-  assert.match(checkTlsVersions('TLSv1.3', 'TLSv1.3').error, /TLSv1.2/);
-  assert.match(checkTlsVersions('TLSv1', 'TLSv1.1').error, /TLSv1.2/);
-  assert.match(checkTlsVersions('TLSv1.2', 'TLSv1.2').warning, /TLSv1.3/);
+// ── TLS profile (TS 103 770 V1.2.1 clause 7.3 to ETSI TS 102 796 V1.8.1 clause 11.2)
+// The handshakes are made with the openssl command-line client, an implementation independent of
+// the server's Node TLS stack, so each case is what a client offering exactly that sees.
 
-  // Node's own option for the minimum version reaches the check.
-  const pki = makeCertificate();
+// A key made by openssl genpkey with the given options, and a certificate for it: self-signed, or
+// issued by a fresh RSA 2048 CA with the given digest.
+function credentials(dir, name, keyOpts, { issuerDigest } = {}) {
+  const run = args => execFileSync('openssl', args, { stdio: 'ignore' });
+  const key = path.join(dir, `${name}.key`), cert = path.join(dir, `${name}.crt`);
+  run(['genpkey', ...keyOpts, '-out', key]);
+  if (!issuerDigest) {
+    run(['req', '-x509', '-key', key, '-out', cert, '-days', '1', '-subj', '/CN=localhost']);
+  } else {
+    const caKey = path.join(dir, `${name}-ca.key`), caCert = path.join(dir, `${name}-ca.crt`), csr = path.join(dir, `${name}.csr`);
+    run(['genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048', '-out', caKey]);
+    run(['req', '-x509', '-key', caKey, '-out', caCert, '-days', '1', '-subj', '/CN=Test CA']);
+    run(['req', '-new', '-key', key, '-out', csr, '-subj', '/CN=localhost']);
+    run(['x509', '-req', '-in', csr, '-CA', caCert, '-CAkey', caKey, `-${issuerDigest}`, '-days', '1', '-out', cert]);
+  }
+  return { key, cert };
+}
+
+// One handshake with openssl s_client: the protocol and suite negotiated, or null when refused.
+function handshake(port, args) {
+  const { execFile } = require('node:child_process');
+  return new Promise(resolve => {
+    const child = execFile('openssl', ['s_client', '-connect', `127.0.0.1:${port}`, '-brief', ...args],
+      { timeout: 10000 }, (err, stdout, stderr) => {
+        const out = `${stdout}\n${stderr}`;
+        const suite = /Ciphersuite: (\S+)/.exec(out), proto = /Protocol version: (\S+)/.exec(out);
+        resolve(suite && proto ? { protocol: proto[1], suite: suite[1] } : null);
+      });
+    child.stdin.end();
+  });
+}
+
+const RSA2048 = ['-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:2048'];
+const ECKEY = curve => ['-algorithm', 'EC', '-pkeyopt', `ec_paramgen_curve:${curve}`];
+
+test('TLS profile: versions, table 15a suites with ECDHE preferred, TLS 1.3 suites, table 15c curves, table 15b signatures (TS 102 796 clause 11.2)',
+  async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-tls-'));
+  const servers = [];
   try {
-    const run = runServer(['--tls-min-v1.3'], { PORT: '0', GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: pki.key, HTTPS_CERT_PATH: pki.cert, LOG_LEVEL: 'error' });
-    assert.equal(run.status, 1);
-    assert.match(run.stderr, /exclude TLSv1.2/);
+    const rsa = credentials(dir, 'rsa', RSA2048);
+    const ec = credentials(dir, 'ec', ECKEY('P-256'));
+    const start = async c => {
+      const srv = startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: c.key, HTTPS_CERT_PATH: c.cert } });
+      servers.push(srv);
+      await new Promise(r => srv.once('listening', r));
+      return srv.address().port;
+    };
+    const rsaPort = await start(rsa), ecPort = await start(ec);
+    const accepted = [
+      [rsaPort, ['-tls1_2'], 'TLSv1.2', 'ECDHE-RSA-AES128-GCM-SHA256', 'TLS 1.2, client default list'],
+      [rsaPort, ['-tls1_2', '-cipher', 'AES128-SHA:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256'],
+        'TLSv1.2', 'ECDHE-RSA-AES128-GCM-SHA256', 'the server prefers ECDHE, in table 15a order, over the client\'s order'],
+      [rsaPort, ['-tls1_2', '-cipher', 'ECDHE-RSA-AES256-GCM-SHA384'], 'TLSv1.2', 'ECDHE-RSA-AES256-GCM-SHA384', 'recommended suite'],
+      [rsaPort, ['-tls1_2', '-cipher', 'AES128-SHA'], 'TLSv1.2', 'AES128-SHA', 'TLS_RSA_WITH_AES_128_CBC_SHA, mandatory'],
+      [ecPort, ['-tls1_2'], 'TLSv1.2', 'ECDHE-ECDSA-AES128-GCM-SHA256', 'ECDSA certificate'],
+      [ecPort, ['-tls1_2', '-cipher', 'ECDHE-ECDSA-AES256-GCM-SHA384'], 'TLSv1.2', 'ECDHE-ECDSA-AES256-GCM-SHA384', 'ECDSA, recommended'],
+      [rsaPort, ['-tls1_2', '-curves', 'P-384', '-cipher', 'ECDHE-RSA-AES128-GCM-SHA256'], 'TLSv1.2', 'ECDHE-RSA-AES128-GCM-SHA256', 'P-384 for ECDHE'],
+      [rsaPort, ['-tls1_2', '-sigalgs', 'rsa_pkcs1_sha256', '-cipher', 'ECDHE-RSA-AES128-GCM-SHA256'], 'TLSv1.2', 'ECDHE-RSA-AES128-GCM-SHA256', 'rsa_pkcs1_sha256, mandatory'],
+      [rsaPort, ['-tls1_3'], 'TLSv1.3', 'TLS_AES_128_GCM_SHA256', 'TLS 1.3, the RFC 8446 MUST suite first'],
+      [rsaPort, ['-tls1_3', '-ciphersuites', 'TLS_AES_256_GCM_SHA384'], 'TLSv1.3', 'TLS_AES_256_GCM_SHA384', 'RFC 8446 SHOULD'],
+      [rsaPort, ['-tls1_3', '-ciphersuites', 'TLS_CHACHA20_POLY1305_SHA256'], 'TLSv1.3', 'TLS_CHACHA20_POLY1305_SHA256', 'RFC 8446 SHOULD'],
+      [rsaPort, ['-tls1_3', '-groups', 'P-256'], 'TLSv1.3', 'TLS_AES_128_GCM_SHA256', 'P-256 key exchange'],
+      [rsaPort, ['-tls1_3', '-groups', 'P-384'], 'TLSv1.3', 'TLS_AES_128_GCM_SHA256', 'P-384 key exchange'],
+      [ecPort, ['-tls1_3'], 'TLSv1.3', 'TLS_AES_128_GCM_SHA256', 'TLS 1.3, ECDSA certificate'],
+    ];
+    for (const [port, args, protocol, suite, why] of accepted) {
+      assert.deepEqual(await handshake(port, args), { protocol, suite }, why);
+    }
+    const refused = [
+      [['-tls1_2', '-cipher', 'aNULL:@SECLEVEL=0'], 'anonymous key exchange, forbidden'],
+      [['-tls1_2', '-cipher', 'eNULL:@SECLEVEL=0'], 'NULL encryption, forbidden'],
+      [['-tls1_2', '-cipher', 'ECDHE-RSA-CHACHA20-POLY1305'], 'not in table 15a'],
+      [['-tls1_2', '-cipher', 'AES256-SHA'], 'not in table 15a'],
+      [['-tls1_2', '-cipher', 'ECDHE-RSA-AES128-SHA'], 'not in table 15a'],
+      [['-tls1_2', '-cipher', 'DHE-RSA-AES128-GCM-SHA256'], 'not in table 15a'],
+      [['-tls1_2', '-curves', 'X25519', '-cipher', 'ECDHE-RSA-AES128-GCM-SHA256'], 'X25519 is not in table 15c'],
+      [['-tls1_2', '-sigalgs', 'RSA+SHA1', '-cipher', 'ECDHE-RSA-AES128-GCM-SHA256:@SECLEVEL=0'], 'rsa_pkcs1_sha1, forbidden'],
+      [['-tls1_1', '-cipher', 'ALL:@SECLEVEL=0'], 'TLS 1.1'],
+      [['-tls1', '-cipher', 'ALL:@SECLEVEL=0'], 'TLS 1.0'],
+      [['-tls1_3', '-ciphersuites', 'TLS_AES_128_CCM_SHA256'], 'not an RFC 8446 clause 9.1 suite'],
+      [['-tls1_3', '-groups', 'X25519'], 'X25519 is not in table 15c'],
+      [['-tls1_3', '-groups', 'X25519MLKEM768'], 'not in table 15c'],
+    ];
+    for (const [args, why] of refused) assert.equal(await handshake(rsaPort, args), null, why);
   } finally {
-    fs.rmSync(pki.dir, { recursive: true, force: true });
+    for (const srv of servers) srv.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('TLS key and certificate outside TS 102 796 clauses 11.2.4 and 11.2.5 stop the server',
+  () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-tls-'));
+  try {
+    const ok = c => startServer({ port: 0, env: { GENRE_CS_DIR: GENRE_FIXTURE, HTTPS_KEY_PATH: c.key, HTTPS_CERT_PATH: c.cert } });
+    for (const [name, opts, extra] of [
+      ['rsa2048', RSA2048], ['rsa4096', ['-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:4096']],
+      ['p256', ECKEY('P-256')], ['p384', ECKEY('P-384')], ['p521', ECKEY('P-521')],
+      ['issued', RSA2048, { issuerDigest: 'sha256' }],
+    ]) {
+      const srv = ok(credentials(dir, name, opts, extra));
+      srv.close();
+    }
+    for (const [name, opts, extra, re, why] of [
+      ['rsa1024', ['-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:1024'], undefined, /RSA key of 1024 bits/, 'under 2 048 bits'],
+      ['rsa4104', ['-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:4104'], undefined, /RSA key of 4104 bits/, 'over 4 096 bits'],
+      ['k1', ECKEY('secp256k1'), undefined, /secp256k1.*table 15c/, 'not a table 15c curve'],
+      ['ed', ['-algorithm', 'ed25519'], undefined, /ed25519 key/, 'no table 15b algorithm'],
+      ['sha1', RSA2048, { issuerDigest: 'sha1' }, /sha1WithRSAEncryption.*table 15b/, 'leaf signed with SHA-1'],
+    ]) {
+      assert.throws(() => ok(credentials(dir, name, opts, extra)), re, why);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

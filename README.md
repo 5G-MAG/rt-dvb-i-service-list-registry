@@ -92,10 +92,15 @@ With neither variable set the registry serves plain HTTP and logs a warning; use
 private subnet shared with the clients, for example a local demo. If only one is set, or the key or
 certificate cannot be loaded, the registry does not start: it never falls back to plain HTTP.
 
-The same clause requires a server to support TLS 1.2 and says it should support TLS 1.3. The
-registry uses Node's default TLS versions, TLS 1.2 to TLS 1.3. It refuses to start if they exclude
-TLS 1.2 (for example under `node --tls-min-v1.3`) and logs a warning if they exclude TLS 1.3 (under
-`node --tls-max-v1.2`).
+The same clause requires a server to support TLS 1.2, says it should support TLS 1.3, and takes the
+rest of the TLS profile from clause 11.2 of ETSI TS 102 796 V1.8.1. The registry sets it explicitly,
+whatever Node's defaults or `--tls-min-*`/`--tls-max-*` options: TLS 1.2 and 1.3 only; for TLS 1.2
+the five suites of table 15a, ECDHE first and in the server's order; for TLS 1.3 the three suites of
+RFC 8446 clause 9.1; the curves P-256, P-384 and P-521 of table 15c (no X25519); and the signature
+algorithms of table 15b that are not Forbidden. The key must be RSA of 2 048 to 4 096 bits or
+elliptic curve on P-256, P-384 or P-521, and every certificate in `HTTPS_CERT_PATH` other than a
+self-signed one must be signed with a table 15b algorithm that is not Forbidden; otherwise the
+registry does not start.
 
 ## Genre values
 
@@ -237,8 +242,12 @@ itself, as `IdentifierBasedDeliveryParameters` holding an `mbms://` locator; see
   inlined.
 - In plain HTTP mode the registry does not check that a client is on its private subnet; that is
   left to the deployment.
-- The TLS profile of clause 7.3 (root certificates, cipher suites, signature algorithms, key sizes
-  and curves, defined in clause 11.2 of ETSI TS 102 796) is not applied; Node's defaults are used.
+- Of the TLS profile of clause 7.3, whether the certificate chains to a root on the HbbTV root
+  certificate list (ETSI TS 102 796 clause 11.2.3) is not checked: that is the operator's choice of
+  CA. The hash inside an RSASSA-PSS certificate signature is not checked either. Two readings are
+  taken: TLS 1.2 suites are only the five table 15a names, and curves are only table 15c's, so a
+  client offering only X25519 is refused (RFC 8446 clause 9.1 asks for X25519 "In the absence of an
+  application profile standard specifying otherwise").
 - Server-side region selection (clause 5.6.4) is not implemented; `SRSSupport` is not advertised.
 - A client learns nothing about 5G delivery from this registry, since TS 103 770 defines no way to
   say it (see above).
