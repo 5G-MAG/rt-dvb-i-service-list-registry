@@ -459,6 +459,31 @@ test('TLS key and certificate outside TS 102 796 clauses 11.2.4 and 11.2.5 stop 
   }
 });
 
+// The signature algorithm is read from the certificate's DER, which every supported Node.js can do;
+// where Node.js reports it too (signatureAlgorithmOid, from 24.9.0), both must agree.
+test('certificate signature algorithm read from the DER, by object identifier', () => {
+  const { certSignatureOid } = require('../server.js');
+  const crypto = require('node:crypto');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slr-oid-'));
+  try {
+    for (const [name, opts, extra, oid] of [
+      ['rsa', RSA2048, undefined, '1.2.840.113549.1.1.11'],
+      ['p256', ECKEY('P-256'), undefined, '1.2.840.10045.4.3.2'],
+      ['sha384', RSA2048, { issuerDigest: 'sha384' }, '1.2.840.113549.1.1.12'],
+      ['sha512', RSA2048, { issuerDigest: 'sha512' }, '1.2.840.113549.1.1.13'],
+      ['sha1', RSA2048, { issuerDigest: 'sha1' }, '1.2.840.113549.1.1.5'],
+    ]) {
+      const c = new crypto.X509Certificate(fs.readFileSync(credentials(dir, name, opts, extra).cert));
+      assert.equal(certSignatureOid(c.raw), oid, name);
+      if (c.signatureAlgorithmOid !== undefined) assert.equal(certSignatureOid(c.raw), c.signatureAlgorithmOid, `${name}: as Node.js reads it`);
+    }
+    assert.equal(certSignatureOid(Buffer.from([0x30, 0x03, 0x02, 0x01, 0x00])), null, 'not a certificate');
+    assert.equal(certSignatureOid(Buffer.alloc(0)), null, 'empty');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Genre values (TS 103 770 V1.2.1 clause 5.3.5, table 12, row Genre) are terms of ContentCS,
 // FormatCS or the clause D.5 ContentSubject scheme, written as the scheme URI, ":", the termID.
 // The scheme files are not in this repository: the case that needs the real files reads
