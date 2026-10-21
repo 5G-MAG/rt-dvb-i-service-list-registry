@@ -145,3 +145,10 @@ test('the 5G extension is not a Delivery query value', () => {
   assert.equal(validate({ Delivery: EXT_5G }).status, 400);
   assert.equal(validate({ Delivery: '5g' }).status, 400);
 });
+
+test('ServiceListURI@contentType is the Service List media type (clauses 5.1.2, table 22)', () => {
+  const xml = buildEntryPoints(registry, {});
+  const types = [...xml.matchAll(/<dvbisd-t:ServiceListURI contentType="([^"]*)"/g)].map(m => m[1]);
+  assert.ok(types.length > 0);
+  assert.deepEqual([...new Set(types)], ['application/vnd.dvb.dvbisl+xml']);
+});

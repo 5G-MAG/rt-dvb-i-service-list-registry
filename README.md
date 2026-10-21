@@ -91,8 +91,53 @@ filtering is where a schema sequence tends to break.
 
 No schema file is carried in this repository and none may be. Supply them through `DVBI_SCHEMAS`
 from a directory outside the working tree; without it the check skips and `npm test` stays green.
+If the directory is given but a file is missing, the check stops and names the missing files.
+Where to get them is in [Where the schema files come from](#where-the-schema-files-come-from).
 The CI workflow, `.github/workflows/test.yml`, runs `npm test` without schemas, so the XSD check
 skips there.
+
+## Where the schema files come from
+
+The XSD check needs the discovery schema and the files it imports. All but one are in the
+electronic attachments of ETSI TS 103 770 V1.2.1: annex B (normative) says they are contained in the
+archive `ts_103770v010201p0.zip`, which accompanies the specification. The archive is published by
+ETSI next to the PDF:
+
+```
+https://www.etsi.org/deliver/etsi_ts/103700_103799/103770/01.02.01_60/ts_103770v010201p0.zip
+```
+
+**A plain `curl` or `wget` of that address is refused with 403**, because the ETSI server rejects
+the default command-line User-Agent. The same request with a browser-style User-Agent returns the
+file (checked 2026-10-21), and so does a browser download from the specification's page on
+etsi.org:
+
+```bash
+curl -L -A "Mozilla/5.0" -o ts_103770v010201p0.zip \
+  https://www.etsi.org/deliver/etsi_ts/103700_103799/103770/01.02.01_60/ts_103770v010201p0.zip
+mkdir -p ~/.local/share/dvb-i-schemas/etsi
+unzip -j ts_103770v010201p0.zip '*.xsd' -x 'xmlait/*' -d ~/.local/share/dvb-i-schemas/etsi
+curl -L -A "Mozilla/5.0" -o ~/.local/share/dvb-i-schemas/etsi/xml.xsd https://www.w3.org/2001/xml.xsd
+```
+
+The files this repository uses, and where each is from:
+
+| File | Source |
+|---|---|
+| `dvbi_service_list_discovery_v1.6.xsd` | the archive, annex B |
+| `dvbi_types_v1.0.xsd` | the archive, annex B |
+| `tva_metadata_3-1.xsd` | the archive, annex B |
+| `tva_mpeg7.xsd` | the archive, annex B |
+| `xml.xsd` | not in the archive; W3C, <https://www.w3.org/2001/xml.xsd> |
+
+**File names.** Annex B and the archive call the TV-Anytime schema `tva_metadata_3-1.xsd`, and the
+discovery schema imports it under that name. This repository fetches no schema itself, so it uses
+exactly that name and nothing else. Some other DVB-I tooling, including the sibling provider
+repository `rt-dvb-i-application-provider`, refers to `tva_metadata_3-1_2024.xsd`, a name that is
+not in annex B. If you hold a file by that name, it has to be copied or renamed to
+`tva_metadata_3-1.xsd` for the discovery schema to find it; this repository has not compared the two
+files' contents, so the archive copy is the one to use here. The base service list schema
+`dvbi_v6.0.xsd` is in the archive too, but this registry does not use it.
 
 ## The page at `/`
 
@@ -134,7 +179,12 @@ and languages it targets, and whether it is a regulator's list.
 
 The response is a `ServiceListEntryPoints` document in `urn:dvb:metadata:servicelistdiscovery:2024`,
 per `dvbi_service_list_discovery_v1.6.xsd`. That schema ships in the electronic attachment archive
-accompanying TS 103 770 (annex B lists it).
+accompanying TS 103 770 (annex B lists it); see
+[Where the schema files come from](#where-the-schema-files-come-from).
+
+Each `ServiceListURI` carries `contentType="application/vnd.dvb.dvbisl+xml"`: clause 5.1.2 requires that
+media type for a Service List, and table 22 defines `@contentType` as the media type of the object at
+the URI. The registry's own response is still served as `application/xml`.
 
 If you extend it: `ServiceListOffering` is declared by the discovery schema but carries a type from
 `dvbi_types_v1.0.xsd`, so all of its children belong to the `servicediscovery-types` namespace
