@@ -172,7 +172,7 @@ function offeringXml(o, indent) {
   // the servicediscovery-types namespace rather than the discovery one. Emitting them unprefixed
   // put them in the wrong namespace and the schema rejected them.
   const names = [].concat(o.name).map(n => `${p}  <dvbisd-t:ServiceListName>${xe(n)}</dvbisd-t:ServiceListName>`).join('\n');
-  const uris = (o.uris || []).map(u => `${p}  <dvbisd-t:ServiceListURI contentType="application/xml">\n${p}    <dvbisd-t:URI>${xe(u)}</dvbisd-t:URI>\n${p}  </dvbisd-t:ServiceListURI>`).join('\n');
+  const uris = (o.uris || []).map(u => `${p}  <dvbisd-t:ServiceListURI contentType="application/vnd.dvb.dvbisl+xml">\n${p}    <dvbisd-t:URI>${xe(u)}</dvbisd-t:URI>\n${p}  </dvbisd-t:ServiceListURI>`).join('\n');
   // DeliveryType's children are a fixed sequence, so they are emitted in schema order rather than
   // in whatever order the registry file happens to list them.
   const declared = new Set((o.delivery || []).map(d => d.toLowerCase()));

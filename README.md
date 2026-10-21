@@ -182,6 +182,10 @@ per `dvbi_service_list_discovery_v1.6.xsd`. That schema ships in the electronic 
 accompanying TS 103 770 (annex B lists it); see
 [Where the schema files come from](#where-the-schema-files-come-from).
 
+Each `ServiceListURI` carries `contentType="application/vnd.dvb.dvbisl+xml"`: clause 5.1.2 requires that
+media type for a Service List, and table 22 defines `@contentType` as the media type of the object at
+the URI. The registry's own response is still served as `application/xml`.
+
 If you extend it: `ServiceListOffering` is declared by the discovery schema but carries a type from
 `dvbi_types_v1.0.xsd`, so all of its children belong to the `servicediscovery-types` namespace
 rather than the discovery one. Emitting them unprefixed produces a document that looks right and
