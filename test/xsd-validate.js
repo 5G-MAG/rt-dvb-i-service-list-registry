@@ -37,6 +37,33 @@ if (!fs.existsSync(SCHEMA)) {
   process.exit(0);
 }
 
+// The discovery schema imports further files, and those import more. libxml2 reports a closure with
+// a file missing only as "Invalid XSD schema", which reads like a defect in the registry. Name the
+// missing files instead: it is a setup problem, not a failure of the response. Files that import
+// nothing further are not followed, and xml.xsd is W3C's, not part of the ETSI archive.
+function missingFromClosure(start) {
+  const seen = new Set(), missing = new Set(), queue = [start];
+  while (queue.length) {
+    const file = queue.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (!fs.existsSync(file)) { missing.add(path.basename(file)); continue; }
+    const text = fs.readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/<(?:\w+:)?(?:import|include)\b[^>]*\bschemaLocation="([^"]+)"/g)) {
+      if (!/^https?:/.test(m[1])) queue.push(path.resolve(path.dirname(file), m[1]));
+    }
+  }
+  return [...missing];
+}
+const missingFiles = missingFromClosure(SCHEMA);
+if (missingFiles.length) {
+  console.error(`Registry XSD check: the schema closure in ${SCHEMAS} is incomplete.`);
+  console.error(`Missing: ${missingFiles.join(', ')}`);
+  console.error('Everything except xml.xsd is in the archive ts_103770v010201p0.zip of TS 103 770; xml.xsd is W3C\'s');
+  console.error('(https://www.w3.org/2001/xml.xsd). See "Where the schema files come from" in the README.');
+  process.exit(1);
+}
+
 let libxml;
 try { libxml = require('libxmljs2'); }
 catch { console.error('libxmljs2 not installed. Run: npm install'); process.exit(2); }
